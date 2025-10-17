@@ -1,0 +1,57 @@
+import { BrowserRouter, Route, Routes } from "react-router";
+import { useEffect } from "react"; // <-- agregado
+import Navbar from './../Components/Navbar/Navbar';
+import Home from "../Pages/Home/Home";
+import Auth from "../Pages/Auth/Auth";
+import Login from "../Pages/Auth/Login/Login";
+import Register from "../Pages/Auth/Register/Register";
+import Error from "../Pages/Error/Error";
+import AuthCheck from "../AuthCheck/AuthCheck";
+import Footer from "../Components/Footer/Footer";
+
+
+
+const MainLayout = () => {
+
+    // Inject Google Fonts link to avoid @import-after-rules PostCSS error
+    useEffect(() => {
+        const id = 'google-fonts-inter';
+        if (!document.getElementById(id)) {
+            const link = document.createElement('link');
+            link.id = id;
+            link.rel = 'stylesheet';
+            link.href = "https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap";
+            document.head.appendChild(link);
+        }
+        // no cleanup to keep the font available; remove link if you prefer on unmount
+    }, []);
+
+    return (
+
+        <BrowserRouter>
+            {/* navbar  */}
+            <Navbar />
+            <Routes>
+                <Route path="/" element={
+                    <AuthCheck>
+                        <Home/>
+                    </AuthCheck>
+                } />
+                <Route path="auth" element={<Auth/>}>
+                    <Route path="login" element={<Login/>} />
+                    <Route path="register" element={<Register/>} />
+                </Route>
+
+                {/* not found routes  */}
+                <Route path="*" element={<Error/> } />
+            </Routes>
+
+            {/* footer component  */}
+            <Footer />
+
+        </BrowserRouter>
+
+    );
+};
+
+export default MainLayout;

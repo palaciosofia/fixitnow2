@@ -1,22 +1,8 @@
-import { Navigate, useLocation } from "react-router";
+// src/AuthCheck/AuthCheck.jsx
+import { useAuth } from "../context/AuthProvider";
+export default function AuthCheck({ children }) {
+  const { loading } = useAuth();
+  if (loading) return null; // opcional: spinner
+  return children;
+}
 
-
-const AuthCheck = ({children}) => {
-
-    const isAuthenticate = true;
-    
-    const location = useLocation();
-
-    if(!isAuthenticate) {
-        return <Navigate to='/auth/login' state={
-            {
-                from: location
-            }
-        } />
-    }
-
-    return children;
-
-};
-
-export default AuthCheck;
