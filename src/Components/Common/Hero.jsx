@@ -219,35 +219,56 @@ export default function Hero() {
           ))}
         </div>
 
-        {/* Tarjeta de beneficios */}
-        <div className="absolute left-1/2 -translate-x-1/2 bottom-[-60px] w-full max-w-5xl px-4 z-40">
-          <div className="bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 py-6 px-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <Feature 
-                icon={<Percent className="w-5 h-5" />} 
-                title="Descuentos Exclusivos" 
-                text="Promociones especiales" 
-                color="emerald"
-              />
-              <Feature 
-                icon={<Truck className="w-5 h-5" />} 
-                title="Servicio Express" 
-                text="Atención inmediata" 
-                color="blue"
-              />
-              <Feature 
-                icon={<Clock className="w-5 h-5" />} 
-                title="Soporte 24/7" 
-                text="Siempre disponibles" 
-                color="purple"
-              />
-              <Feature 
-                icon={<Shield className="w-5 h-5" />} 
-                title="Garantía Total" 
-                text="Calidad asegurada" 
-                color="orange"
-              />
-            </div>
+
+      </div>
+    </section>
+  );
+}
+
+// Componente de tarjeta de beneficios separado
+export function HeroBenefits() {
+  return (
+    <section className="bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 py-16 relative overflow-hidden">
+      {/* Elementos decorativos */}
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute top-10 left-10 w-32 h-32 bg-emerald-200/20 rounded-full blur-3xl"></div>
+        <div className="absolute bottom-10 right-10 w-40 h-40 bg-blue-200/20 rounded-full blur-3xl"></div>
+      </div>
+
+      <div className="container mx-auto px-4 relative z-10">
+        <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 p-8">
+          <div className="text-center mb-8">
+            <h2 className="text-2xl md:text-3xl font-black bg-gradient-to-r from-gray-800 via-gray-700 to-gray-900 bg-clip-text text-transparent mb-2">
+              ¿Por qué elegir FixItNow?
+            </h2>
+            <p className="text-gray-600">Beneficios que nos hacen únicos</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+            <Feature 
+              icon={<Percent className="w-6 h-6" />} 
+              title="Descuentos Exclusivos" 
+              text="Promociones especiales para clientes frecuentes" 
+              color="emerald"
+            />
+            <Feature 
+              icon={<Truck className="w-6 h-6" />} 
+              title="Servicio Express" 
+              text="Atención inmediata cuando más lo necesitas" 
+              color="blue"
+            />
+            <Feature 
+              icon={<Clock className="w-6 h-6" />} 
+              title="Soporte 24/7" 
+              text="Siempre disponibles para ayudarte" 
+              color="purple"
+            />
+            <Feature 
+              icon={<Shield className="w-6 h-6" />} 
+              title="Garantía Total" 
+              text="Calidad asegurada en cada servicio" 
+              color="orange"
+            />
           </div>
         </div>
       </div>
@@ -264,13 +285,13 @@ function Feature({ icon, title, text, color = "emerald" }) {
   };
 
   return (
-    <div className="group flex items-center gap-4 text-gray-700 hover:scale-105 transition-all duration-300">
-      <div className={`w-12 h-12 bg-gradient-to-br ${colorVariants[color]} rounded-xl flex items-center justify-center text-white shadow-lg group-hover:shadow-xl group-hover:scale-110 transition-all duration-300`}>
+    <div className="group text-center hover:scale-105 transition-all duration-300">
+      <div className={`w-16 h-16 bg-gradient-to-br ${colorVariants[color]} rounded-2xl flex items-center justify-center text-white shadow-lg group-hover:shadow-xl group-hover:scale-110 transition-all duration-300 mx-auto mb-4`}>
         {icon}
       </div>
       <div>
-        <p className="text-lg font-bold text-gray-900 group-hover:text-gray-700 transition-colors">{title}</p>
-        <p className="text-sm text-gray-500 group-hover:text-gray-600 transition-colors">{text}</p>
+        <p className="text-xl font-bold text-gray-900 group-hover:text-gray-700 transition-colors mb-2">{title}</p>
+        <p className="text-sm text-gray-500 group-hover:text-gray-600 transition-colors leading-relaxed">{text}</p>
       </div>
     </div>
   );

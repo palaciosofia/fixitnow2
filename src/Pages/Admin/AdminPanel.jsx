@@ -325,7 +325,7 @@ function UsuariosTable() {
     try {
       const ref = doc(db, "users", id);
       await updateDoc(ref, { deletedAt: serverTimestamp() });
-      setItems(prev => prev.filter(it => it.id !== id)); // 👈 ya no aparece
+      setItems(prev => prev.filter(it => it.id !== id)); 
     } finally {
       setBusy(false);
     }

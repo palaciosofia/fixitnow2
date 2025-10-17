@@ -3,14 +3,14 @@ import { useEffect, useState } from "react";
 import { X, Calendar, Clock, FileText, Sparkles, User, MapPin } from "lucide-react";
 
 export default function ReserveModal({
-  open = true,          // ← por defecto abierto
+  open = true,          
   tech,
   uid,
   onClose = () => {},
 }) {
   if (!open) return null;
   if (!tech) return null;          // seguridad
-  // si quieres exigir login: if (!uid) return null;
+  
 
   // evitar scroll del body cuando el modal está abierto
   useEffect(() => {
@@ -38,7 +38,7 @@ export default function ReserveModal({
     if (submitting) return;
     setSubmitting(true);
     try {
-      // simulación de envío (reemplaza por tu lógica real)
+      
       await new Promise((r) => setTimeout(r, 900));
       onClose();
     } finally {

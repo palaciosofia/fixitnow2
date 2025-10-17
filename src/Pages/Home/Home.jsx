@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 
 // Secciones comunes (capa base)
-import Hero from "../../Components/Common/Hero";
+import Hero, { HeroBenefits } from "../../Components/Common/Hero";
 import HowItWorks from "../../Components/Common/HowItWorks";
 import Benefits from "../../Components/Common/Benefits";
 import ReviewsStrip from "../../Components/Common/ReviewsStrip";
@@ -15,7 +15,7 @@ import { ArrowRight, Search, Star, Users, Zap, Shield } from "lucide-react";
 
 // Lecturas centralizadas
 import {
-  fetchPublicTechniciansPreview, // 👈 nuevo helper (6 por defecto)
+  fetchPublicTechniciansPreview, 
   fetchPublicReviewsStrip,
 } from "../../services/publicData";
 
@@ -105,6 +105,9 @@ export default function Home() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
       {/* HERO / Promesa y CTA */}
       <Hero />
+      
+      {/* BENEFICIOS HERO */}
+      <HeroBenefits />
 
       {/* CATÁLOGO PREMIUM (ancla para navbar/hero) */}
       <section id="catalogo" className="relative py-20 overflow-hidden">

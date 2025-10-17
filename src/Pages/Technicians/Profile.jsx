@@ -33,7 +33,7 @@ export default function Profile() {
     (async () => {
       setLoading(true);
 
-      // 1) Primer intento: servicio existente por slug (tu flujo actual)
+      
       let t = null;
       try {
         t = await getTechBySlug(slug);

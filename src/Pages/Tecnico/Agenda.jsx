@@ -155,7 +155,7 @@ export default function Agenda() {
       if (!ok) return;
     }
     try {
-      // Opción A (la de tus capturas): borrar
+      // Opción A: borrar
       await deleteDoc(doc(db, "reservas", id));
 
       // Opción B: marcar como cancelada (descomenta y comenta deleteDoc):

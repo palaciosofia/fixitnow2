@@ -78,7 +78,7 @@ export default function MisReservas() {
       if (missing.length) missing.forEach(loadTechName);
     }, e => {
       console.error(e);
-      // Si Firestore pide un índice compuesto, verás el enlace aquí en consola.
+      
       setErr(e?.message || "Error al cargar");
       setLoading(false);
     });

@@ -18,9 +18,9 @@ const ESPECIALIDADES = [
 const Footer = () => {
   return (
     <footer className="w-full bg-gradient-to-b from-slate-50 to-white text-gray-700 overflow-hidden">
-      {/* Suscripción / Banner mejorado */}
+      {/* Suscripción / Banner */}
       <div className="w-full bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 py-16 relative">
-        {/* Elementos decorativos de fondo */}
+        {/* Elementos decorativos*/}
         <div className="absolute inset-0 overflow-hidden">
           <div className="absolute top-10 left-10 w-32 h-32 bg-emerald-200/20 rounded-full blur-3xl"></div>
           <div className="absolute bottom-10 right-10 w-48 h-48 bg-teal-200/20 rounded-full blur-3xl"></div>
@@ -29,7 +29,7 @@ const Footer = () => {
         
         <div className="max-w-screen-xl mx-auto px-10 relative z-10">
           <div className="bg-white/80 backdrop-blur-xl rounded-3xl p-8 md:p-16 flex flex-col md:flex-row items-center gap-16 shadow-2xl border border-white/20">
-            {/* Texto + formulario mejorado */}
+            {/* Texto + formulario */}
             <div className="flex-1 space-y-6">
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-12 h-12 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl flex items-center justify-center">
@@ -71,7 +71,7 @@ const Footer = () => {
               </form>
             </div>
 
-            {/* Ilustración mejorada */}
+            {/* Ilustración*/}
             <div className="flex-1 hidden md:flex justify-end relative">
               <div className="relative">
                 <div className="absolute inset-0 bg-gradient-to-br from-emerald-400/20 to-teal-400/20 rounded-3xl blur-xl transform rotate-6"></div>
@@ -209,11 +209,11 @@ const Footer = () => {
                 <div className="space-y-3">
                   <div className="flex items-center gap-3 p-3 bg-white/5 rounded-xl border border-white/10 hover:bg-white/10 transition-colors">
                     <MapPin className="w-5 h-5 text-emerald-400 flex-shrink-0" />
-                    <span className="text-gray-300">Medellín, Colombia</span>
+                    <span className="text-gray-300">Barranquilla, Colombia</span>
                   </div>
                   <div className="flex items-center gap-3 p-3 bg-white/5 rounded-xl border border-white/10 hover:bg-white/10 transition-colors">
                     <Phone className="w-5 h-5 text-emerald-400 flex-shrink-0" />
-                    <span className="text-gray-300">+57 (604) 123-4567</span>
+                    <span className="text-gray-300">+57 (324) 123-4567</span>
                   </div>
                   <div className="flex items-center gap-3 p-3 bg-white/5 rounded-xl border border-white/10 hover:bg-white/10 transition-colors">
                     <Mail className="w-5 h-5 text-emerald-400 flex-shrink-0" />
@@ -221,7 +221,7 @@ const Footer = () => {
                   </div>
                   <div className="flex items-center gap-3 p-3 bg-white/5 rounded-xl border border-white/10 hover:bg-white/10 transition-colors">
                     <Clock className="w-5 h-5 text-emerald-400 flex-shrink-0" />
-                    <span className="text-gray-300">Lun - Sáb: 8:00 - 20:00</span>
+                    <span className="text-gray-300">Lun - Sáb: 9:00 - 18:00</span>
                   </div>
                 </div>
               </div>

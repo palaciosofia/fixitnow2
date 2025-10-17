@@ -55,7 +55,7 @@ export default function Login() {
         return;
       }
 
-      // 2) Si venía de una ruta protegida, respétala
+      
       const from = loc.state?.from;
       if (from) {
         nav(from, { replace: true });
@@ -65,7 +65,7 @@ export default function Login() {
       // 3) Por rol
       const role = profile?.role;
       if (role === "tecnico") {
-        nav("/mi-perfil", { replace: true }); // ajusta si tu ruta es otra
+        nav("/mi-perfil", { replace: true });
       } else {
         // 4) Cliente (u otro) → Inicio
         nav("/", { replace: true });

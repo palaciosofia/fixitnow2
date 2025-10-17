@@ -164,8 +164,7 @@ export default function Book() {
 
         <div>
           <label className="block text-sm mb-1">Hora</label>
-          {/* Si quieres mantener <input type="time">, déjalo.
-              Aquí uso <select> para guiar al usuario a solo horas válidas */}
+          {/*  */}
           <select
             className="border rounded px-3 py-2 w-full"
             value={hora}
@@ -177,13 +176,7 @@ export default function Book() {
               <option key={h} value={h}>{h}</option>
             ))}
           </select>
-          {/* Si prefieres input type="time", descomenta:
-          <input
-            type="time"
-            className="border rounded px-3 py-2 w-full"
-            value={hora}
-            onChange={(e) => setHora(e.target.value)}
-            step="3600"
+          {/* 
           />
           */}
         </div>

@@ -21,6 +21,7 @@ import AdminPanel from "../Pages/Admin/AdminPanel";
 import Perfil from "../Pages/Perfil/Perfil";
 import NoAutorizado from "../Pages/NoAutorizado";
 
+
 // ✅ Catálogo
 import Catalog from "../Pages/Catalog/Catalog";
 // ✅ Perfil público del técnico

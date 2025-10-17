@@ -136,7 +136,7 @@ export default function TecnicoDashboard() {
       };
     });
 
-  // ------- Checklist publicación (coincide con tus reglas) -------
+  
   const checklist = useMemo(() => {
     const fotoOK = !!form.fotoURL;
     const bioOK = typeof form.bioCorta === "string" && form.bioCorta.trim().length >= 120;
