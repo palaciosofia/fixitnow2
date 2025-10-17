@@ -22,7 +22,7 @@ export default function Hero() {
       title: "Arreglos del Hogar Sin Complicaciones",
       subTitle: "Tu Solución Está Aquí",
       description: "Encuentra técnicos profesionales verificados en tu zona. Reparaciones rápidas, seguras y garantizadas.",
-      image: "/src/assets/Hero/hero_1.png",
+      image: "/src/assets/Banner/banner_image.png",
       buttonText: "Explorar Técnicos",
       link: "/#catalogo",
       chips: ["⚡ Electricidad", "🔧 Plomería"]
@@ -32,7 +32,7 @@ export default function Hero() {
       title: "Profesionales de Confianza a tu Servicio",
       subTitle: "Calidad Garantizada",
       description: "Agenda en minutos con nuestros expertos. Electricistas, plomeros y más especialistas esperándote.",
-      image: "/src/assets/Hero/hero_2.png",
+      image: "/src/assets/Banner/banner_image.png",
       buttonText: "Ver Todos los Servicios",
       link: "/#servicios",
       chips: ["🚀 Express", "🛡️ Garantía Total"]
