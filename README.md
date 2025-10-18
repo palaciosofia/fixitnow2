@@ -1,1 +1,1 @@
-Link Netlify: https://fixitnowsdj.netlify.app/
+Link: https://fixitnowsdj.netlify.app/
