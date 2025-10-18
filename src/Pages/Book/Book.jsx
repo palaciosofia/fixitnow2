@@ -12,10 +12,19 @@ import {
 import dayjs from "dayjs";
 import { useAuth } from "../../context/AuthProvider";
 import {
-  buildHourlySlots,
+  // buildHourlySlots,            // ❌ ya no lo usamos
   combineDateTime,
   buildSlotId,
 } from "../../utils/slots";
+
+/** Genera horas locales sin consultar disponibilidad */
+function generateHours(start = 8, end = 19) {
+  const arr = [];
+  for (let h = start; h <= end; h++) {
+    arr.push(`${String(h).padStart(2, "0")}:00`);
+  }
+  return arr;
+}
 
 export default function Book() {
   const { tid } = useParams(); // id del técnico (docId)
@@ -23,6 +32,7 @@ export default function Book() {
   const nav = useNavigate();
 
   const [tech, setTech] = useState(null);
+  const [warn, setWarn] = useState(""); // aviso no bloqueante
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -42,37 +52,39 @@ export default function Book() {
     (async () => {
       try {
         const snap = await getDoc(doc(db, "technicians", tid));
-        if (!snap.exists()) throw new Error("Técnico no encontrado");
-        setTech({ id: snap.id, ...snap.data() });
+        if (!snap.exists()) {
+          // Modo degradado: permitir reservar igual usando solo tid
+          setWarn("No se pudo cargar el perfil del técnico. Continuas sin perfil.");
+          setTech({ id: tid });
+        } else {
+          setTech({ id: snap.id, ...snap.data() });
+        }
       } catch (e) {
-        setErr(e?.message || "Error cargando técnico");
+        // p.ej. 403 por no publicado: continuar
+        console.error(e);
+        setWarn("No se pudo leer el perfil del técnico. Reservarás sin validaciones de horario.");
+        setTech({ id: tid });
       } finally {
         setLoading(false);
       }
     })();
   }, [tid]);
 
-  // Slots disponibles según horarios del técnico y la fecha elegida
+  // Horas disponibles: locales (08:00–19:00), no dependen de horarios del técnico
   const horasDisponibles = useMemo(() => {
-    if (!tech || !fecha) return [];
-    return buildHourlySlots(tech, fecha); // ["09:00","10:00", ...]
-  }, [tech, fecha]);
+    if (!fecha) return [];
+    return generateHours(8, 19);
+  }, [fecha]);
 
-  // helper: valida fecha/hora futura y que pertenezca a los slots
+  // Validaciones mínimas (sin mirar disponibilidad)
   function validateInputs() {
     if (!user?.uid) return "Debes iniciar sesión como cliente para reservar.";
     if (!fecha || !hora) return "Selecciona fecha y hora.";
-    // la hora debe estar en la lista de disponibles (horarios + excepciones)
-    if (horasDisponibles.length && !horasDisponibles.includes(hora)) {
-      return "La hora seleccionada no está disponible para ese día.";
-    }
     const d = combineDateTime(fecha, hora);
     if (!d || isNaN(d.getTime())) return "Fecha u hora inválidas.";
-    // no permitir reservas en el pasado (margen 1 min)
-    if (d.getTime() < Date.now() - 60_000) {
-      return "La fecha/hora debe ser futura.";
-    }
+    if (d.getTime() < Date.now() - 60_000) return "La fecha/hora debe ser futura.";
     return null;
+    // 👇 Importante: ya NO validamos contra buildHourlySlots
   }
 
   async function onSubmit(e) {
@@ -88,23 +100,23 @@ export default function Book() {
     try {
       setSaving(true);
 
-      // Datos base
-      const start = hora;                                  // "HH:00"
+      const start = hora; // "HH:00"
       const end = dayjs(`${fecha}T${start}`).add(1, "hour").format("HH:00");
       const scheduledAtDate = combineDateTime(fecha, start);
       const scheduledAt = Timestamp.fromDate(scheduledAtDate);
-      const rid = buildSlotId(tid, scheduledAtDate);       // tid_YYYYMMDD_HH
+      const rid = buildSlotId(tid, scheduledAtDate); // tid_YYYYMMDD_HH
 
-      // Transacción: crea doc solo si NO existe (bloquea doble booking)
       await runTransaction(db, async (tx) => {
         const ref = doc(db, "reservas", rid);
         const existing = await tx.get(ref);
         if (existing.exists()) {
+          // Mantiene protección anti doble booking por el mismo rid,
+          // pero no requiere "slots" precreados.
           throw new Error("Ese horario ya está reservado.");
         }
 
         tx.set(ref, {
-          technicianId: tech.id,
+          technicianId: tech?.id || tid,
           technicianName: tech?.nombre || "",
           technicianCiudad: tech?.ciudad || "",
           technicianSlug: tech?.slug || null,
@@ -116,7 +128,7 @@ export default function Book() {
           date: fecha,        // "YYYY-MM-DD"
           start,              // "HH:00"
           end,                // "HH:00"
-          scheduledAt,        // Timestamp (útil para ordenar)
+          scheduledAt,        // Timestamp
           description: (desc || "").trim(),
 
           status: "solicitada",   // solicitada | confirmada | cancelada
@@ -125,7 +137,7 @@ export default function Book() {
         });
       });
 
-      alert("Reserva enviada. Te avisaremos cuando el técnico confirme.");
+      alert("Reserva enviada ✅. Te avisaremos cuando el técnico confirme.");
       nav("/mis-reservas");
     } catch (e) {
       console.error(e);
@@ -141,11 +153,16 @@ export default function Book() {
 
   return (
     <div className="max-w-3xl mx-auto p-4">
-      <h1 className="text-2xl font-semibold mb-4">
-        Reservar con {tech?.nombre || "Técnico"}
+      <h1 className="text-2xl font-semibold mb-2">
+        Reservar con {tech?.nombre || tid}
       </h1>
+      {warn && (
+        <div className="mb-4 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+          {warn}
+        </div>
+      )}
 
-      <form onSubmit={onSubmit} className="space-y-4 border rounded-xl p-4">
+      <form onSubmit={onSubmit} className="space-y-4 border rounded-xl p-4 bg-white">
         <div>
           <label className="block text-sm mb-1">Fecha</label>
           <input
@@ -154,31 +171,24 @@ export default function Book() {
             value={fecha}
             onChange={(e) => {
               setFecha(e.target.value);
-              // si la hora elegida ya no está disponible para ese día, limpiar
-              if (hora && !buildHourlySlots(tech, e.target.value).includes(hora)) {
-                setHora("");
-              }
+              // si ya había hora, no la invalidamos por slots (porque ya no hay slots)
             }}
           />
         </div>
 
         <div>
           <label className="block text-sm mb-1">Hora</label>
-          {/*  */}
           <select
             className="border rounded px-3 py-2 w-full"
             value={hora}
             onChange={(e) => setHora(e.target.value)}
-            disabled={!fecha || horasDisponibles.length === 0}
+            disabled={!fecha} // ✅ solo depende de tener fecha
           >
             <option value="">Selecciona una hora…</option>
             {horasDisponibles.map((h) => (
               <option key={h} value={h}>{h}</option>
             ))}
           </select>
-          {/* 
-          />
-          */}
         </div>
 
         <div>
