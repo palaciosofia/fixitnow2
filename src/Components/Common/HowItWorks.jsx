@@ -1,7 +1,16 @@
-import { Search, Calendar, Wrench, Star, ArrowRight, Sparkles } from "lucide-react";
+import { Search, Calendar, Wrench, Star, ArrowRight, Sparkles, CheckCircle, Zap } from "lucide-react";
 import SectionTitle from "../SectionTitle/SectionTitle";
+import { motion } from "framer-motion";
+import { useInView } from "react-intersection-observer";
+import { useState } from "react";
 
 export default function HowItWorks() {
+  const [ref, inView] = useInView({
+    triggerOnce: true,
+    threshold: 0.1,
+  });
+  
+  const [activeStep, setActiveStep] = useState(0);
   const steps = [
     {
       id: 1,
@@ -42,103 +51,238 @@ export default function HowItWorks() {
   ];
 
   return (
-    <section className="bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 py-20 relative overflow-hidden">
-      {/* Elementos decorativos de fondo */}
+    <section className="bg-gradient-to-br from-slate-50 via-emerald-50 to-teal-50 py-20 relative overflow-hidden">
+      {/* Fondo animado con gradientes suaves */}
       <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute top-20 left-20 w-64 h-64 bg-emerald-200/20 rounded-full blur-3xl"></div>
-        <div className="absolute bottom-20 right-20 w-80 h-80 bg-blue-200/20 rounded-full blur-3xl"></div>
-        <div className="absolute top-1/2 left-1/3 w-48 h-48 bg-purple-200/20 rounded-full blur-2xl"></div>
+        <motion.div 
+          className="absolute top-0 left-1/4 w-96 h-96 bg-emerald-200/30 rounded-full blur-3xl"
+          animate={{ y: [0, 50, 0], x: [0, 30, 0] }}
+          transition={{ duration: 8, repeat: Infinity }}
+        ></motion.div>
+        <motion.div 
+          className="absolute bottom-0 right-1/4 w-96 h-96 bg-teal-200/30 rounded-full blur-3xl"
+          animate={{ y: [0, -50, 0], x: [0, -30, 0] }}
+          transition={{ duration: 10, repeat: Infinity }}
+        ></motion.div>
       </div>
 
-      <div className="container mx-auto px-4 relative z-10">
-        {/* Header espectacular con SectionTitle */}
-        <div className="mb-16">
-          <SectionTitle 
-            title="¿Cómo Funciona?" 
-            subtitle="Proceso simple y rápido para conectarte con técnicos expertos"
-            variant="hero"
-            icon="sparkles"
-            textAlign="center"
-            mb="mb-0"
-          />
-        </div>
+      <div className="container mx-auto px-4 relative z-10" ref={ref}>
+        {/* Header */}
+        <motion.div 
+          className="text-center mb-20"
+          initial={{ opacity: 0, y: -20 }}
+          animate={inView ? { opacity: 1, y: 0 } : {}}
+          transition={{ duration: 0.6 }}
+        >
+          <div className="inline-block mb-4">
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ duration: 4, repeat: Infinity }}
+              className="w-16 h-16 bg-gradient-to-br from-emerald-400 to-teal-500 rounded-2xl flex items-center justify-center shadow-lg"
+            >
+              <Sparkles className="w-8 h-8 text-white" />
+            </motion.div>
+          </div>
+          <h2 className="text-5xl md:text-6xl font-black text-gray-900 mb-4">
+            4 Pasos Simples
+          </h2>
+          <p className="text-xl text-emerald-700 max-w-2xl mx-auto">
+            De búsqueda a solución en minutos
+          </p>
+        </motion.div>
 
-        {/* Grid de pasos con conexiones */}
-        <div className="relative">
-          {/* Línea conectora para desktop */}
-          <div className="hidden lg:block absolute top-24 left-0 right-0 h-1 bg-gradient-to-r from-emerald-500 via-blue-500 to-orange-500 rounded-full opacity-30"></div>
-
-          <div className="grid gap-8 grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
+        {/* Contenedor principal con dos columnas */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-stretch">
+          
+          {/* Columna izquierda - Pasos interactivos verticales */}
+          <div className="space-y-6">
             {steps.map((step, index) => (
-              <div 
-                key={step.id} 
-                className="group relative animate-fade-in-up"
-                style={{
-                  animationDelay: `${index * 200}ms`
-                }}
+              <motion.div
+                key={step.id}
+                initial={{ opacity: 0, x: -30 }}
+                animate={inView ? { opacity: 1, x: 0 } : {}}
+                transition={{ delay: index * 0.1 }}
+                onMouseEnter={() => setActiveStep(index)}
+                className="cursor-pointer"
               >
-                {/* Card principal */}
-                <div className={`bg-white/80 backdrop-blur-sm rounded-3xl shadow-xl border-2 ${step.borderColor} p-8 text-center hover:shadow-2xl transition-all duration-500 transform hover:-translate-y-2 relative overflow-hidden`}>
-                  
-                  {/* Decoración de fondo */}
-                  <div className={`absolute top-0 right-0 w-20 h-20 bg-gradient-to-br ${step.bgColor} rounded-full blur-2xl opacity-60`}></div>
-                  
-                  {/* Número del paso */}
-                  <div className="absolute top-4 right-4 w-8 h-8 bg-gradient-to-br from-gray-700 to-gray-900 rounded-full flex items-center justify-center">
-                    <span className="text-white text-sm font-black">{step.id}</span>
-                  </div>
-
-                  {/* Icono principal */}
-                  <div className={`w-20 h-20 bg-gradient-to-br ${step.gradient} rounded-2xl flex items-center justify-center text-white shadow-lg mx-auto mb-6 group-hover:scale-110 group-hover:rotate-3 transition-all duration-300 relative z-10`}>
-                    {step.icon}
-                  </div>
+                <motion.div
+                  className={`relative pl-20 py-6 px-6 rounded-2xl transition-all duration-300 ${
+                    activeStep === index
+                      ? 'bg-gradient-to-r from-emerald-500/40 to-teal-500/30 border-2 border-emerald-500 shadow-xl shadow-emerald-500/20'
+                      : 'bg-white/60 border-2 border-white/40 hover:bg-white/80'
+                  }`}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  {/* Número circular */}
+                  <motion.div 
+                    className={`absolute left-0 top-1/2 -translate-y-1/2 w-14 h-14 rounded-full flex items-center justify-center font-black text-lg transition-all duration-300 ${
+                      activeStep === index
+                        ? 'bg-gradient-to-br from-emerald-400 to-teal-500 text-white shadow-lg shadow-emerald-500/50'
+                        : 'bg-white/10 text-emerald-300 border-2 border-white/20'
+                    }`}
+                    animate={activeStep === index ? { scale: 1.1 } : { scale: 1 }}
+                  >
+                    {step.id}
+                  </motion.div>
 
                   {/* Contenido */}
-                  <div className="relative z-10">
-                    <h3 className="text-xl font-black text-gray-900 mb-4 group-hover:text-gray-700 transition-colors">
+                  <div>
+                    <motion.h3 
+                      className={`text-2xl font-black mb-2 transition-colors duration-300 ${
+                        activeStep === index ? 'text-emerald-700' : 'text-gray-800'
+                      }`}
+                      animate={activeStep === index ? { letterSpacing: '0.05em' } : {}}
+                    >
                       {step.title}
-                    </h3>
-                    <p className="text-gray-600 leading-relaxed group-hover:text-gray-700 transition-colors">
+                    </motion.h3>
+                    <motion.p 
+                      className={`transition-all duration-300 ${
+                        activeStep === index ? 'text-gray-700 opacity-100' : 'text-gray-600 opacity-90'
+                      }`}
+                    >
                       {step.description}
-                    </p>
+                    </motion.p>
                   </div>
 
-                  {/* Flecha conectora */}
+                  {/* Línea conectora */}
                   {index < steps.length - 1 && (
-                    <div className="hidden lg:block absolute top-1/2 -right-4 transform -translate-y-1/2 z-20">
-                      <div className="w-8 h-8 bg-white rounded-full shadow-lg flex items-center justify-center border-2 border-gray-200">
-                        <ArrowRight className="w-4 h-4 text-gray-600" />
-                      </div>
-                    </div>
+                    <motion.div 
+                      className="absolute left-7 top-full w-1 h-8 bg-gradient-to-b from-white/30 to-transparent"
+                      animate={activeStep === index ? { opacity: 1 } : { opacity: 0.5 }}
+                    ></motion.div>
                   )}
-                </div>
-              </div>
+                </motion.div>
+              </motion.div>
             ))}
+          </div>
+
+          {/* Columna derecha - Visualización dinámica */}
+          <div className="relative">
+            <motion.div
+              className="sticky top-20 h-[500px] bg-gradient-to-br from-white/60 to-white/40 rounded-3xl border-2 border-white/60 backdrop-blur-xl p-8 flex flex-col items-center justify-center overflow-hidden shadow-xl"
+              whileHover={{ borderColor: 'rgba(16, 185, 129, 0.6)' }}
+            >
+              {/* Fondo animado del preview */}
+              <motion.div
+                className="absolute inset-0 rounded-3xl opacity-20"
+                animate={{
+                  background: [
+                    'linear-gradient(45deg, #10b981, #14b8a6)',
+                    'linear-gradient(225deg, #0891b2, #06b6d4)',
+                    'linear-gradient(45deg, #10b981, #14b8a6)'
+                  ]
+                }}
+                transition={{ duration: 4, repeat: Infinity }}
+              ></motion.div>
+
+              {/* Contenido del preview */}
+              <motion.div
+                key={activeStep}
+                initial={{ opacity: 0, scale: 0.8, rotate: -10 }}
+                animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                exit={{ opacity: 0, scale: 0.8, rotate: 10 }}
+                transition={{ duration: 0.4, type: 'spring', stiffness: 100 }}
+                className="relative z-10 text-center"
+              >
+                {/* Icono grande y animado */}
+                <motion.div
+                  className={`w-32 h-32 mx-auto mb-8 rounded-3xl flex items-center justify-center text-white text-5xl shadow-2xl transform`}
+                  style={{
+                    background: `linear-gradient(135deg, ${
+                      [
+                        '#10b981',
+                        '#3b82f6',
+                        '#a855f7',
+                        '#f97316'
+                      ][activeStep]
+                    }, ${
+                      [
+                        '#14b8a6',
+                        '#0ea5e9',
+                        '#d946ef',
+                        '#ea580c'
+                      ][activeStep]
+                    })`
+                  }}
+                  animate={{
+                    rotateY: [0, 360],
+                    boxShadow: [
+                      `0 0 30px ${['rgba(16, 185, 129, 0.5)', 'rgba(59, 130, 246, 0.5)', 'rgba(168, 85, 247, 0.5)', 'rgba(249, 115, 22, 0.5)'][activeStep]}`,
+                      `0 0 60px ${['rgba(16, 185, 129, 0.8)', 'rgba(59, 130, 246, 0.8)', 'rgba(168, 85, 247, 0.8)', 'rgba(249, 115, 22, 0.8)'][activeStep]}`,
+                      `0 0 30px ${['rgba(16, 185, 129, 0.5)', 'rgba(59, 130, 246, 0.5)', 'rgba(168, 85, 247, 0.5)', 'rgba(249, 115, 22, 0.5)'][activeStep]}`
+                    ]
+                  }}
+                  transition={{ duration: 3, repeat: Infinity }}
+                >
+                  {[<Search key="1" />, <Calendar key="2" />, <Wrench key="3" />, <Star key="4" />][activeStep]}
+                </motion.div>
+
+                {/* Título y descripción */}
+                <h3 className="text-3xl font-black text-gray-900 mb-3">
+                  {steps[activeStep].title}
+                </h3>
+                <p className="text-lg text-gray-700 mb-8 max-w-xs">
+                  {steps[activeStep].description}
+                </p>
+
+                {/* Indicadores de progreso */}
+                <div className="flex items-center justify-center gap-2 mb-8">
+                  {steps.map((_, index) => (
+                    <motion.div
+                      key={index}
+                      className="h-2 rounded-full bg-white/20"
+                      animate={{
+                        width: activeStep === index ? 24 : 8,
+                        backgroundColor: activeStep === index ? '#10b981' : 'rgba(255, 255, 255, 0.2)'
+                      }}
+                      transition={{ duration: 0.3 }}
+                    ></motion.div>
+                  ))}
+                </div>
+
+                {/* Paso actual */}
+                <div className="text-sm text-emerald-700 font-semibold">
+                  Paso {activeStep + 1} de {steps.length}
+                </div>
+              </motion.div>
+            </motion.div>
           </div>
         </div>
 
-        {/* CTA final */}
-        <div className="text-center mt-16">
-          <div className="bg-white/60 backdrop-blur-sm rounded-3xl p-8 shadow-xl border border-white/20 inline-block">
-            <div className="flex items-center gap-4 justify-center mb-4">
-              <Sparkles className="w-8 h-8 text-emerald-600" />
-              <h3 className="text-2xl font-black text-gray-900">¡Comienza Ahora!</h3>
-              <Sparkles className="w-8 h-8 text-emerald-600" />
-            </div>
-            <p className="text-gray-600 mb-6 max-w-md">
-              Miles de técnicos verificados están listos para ayudarte. 
-              Tu solución está a solo unos clics de distancia.
-            </p>
-            <a 
-              href="/#catalogo"
-              className="inline-flex items-center gap-3 px-8 py-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-lg rounded-2xl shadow-lg hover:shadow-emerald-500/25 transition-all duration-300 transform hover:scale-105"
+        {/* CTA final mejorado */}
+        <motion.div 
+          className="text-center mt-20"
+          initial={{ opacity: 0, y: 20 }}
+          animate={inView ? { opacity: 1, y: 0 } : {}}
+          transition={{ duration: 0.6, delay: 0.6 }}
+        >
+          <motion.a 
+            href="/#catalogo"
+            className="group relative inline-flex items-center gap-3 px-10 py-5 bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-bold text-xl rounded-2xl shadow-2xl overflow-hidden"
+            whileHover={{ scale: 1.08 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            <motion.div
+              className="absolute inset-0 bg-gradient-to-r from-emerald-600 to-teal-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+            ></motion.div>
+            <motion.div
+              animate={{ x: [0, 8, 0] }}
+              transition={{ duration: 2, repeat: Infinity }}
+              className="relative z-10"
             >
               <Search className="w-6 h-6" />
-              Explorar Técnicos
+            </motion.div>
+            <span className="relative z-10">Explorar Técnicos Ahora</span>
+            <motion.div
+              animate={{ x: [0, 4, 0] }}
+              transition={{ duration: 2, repeat: Infinity, delay: 0.1 }}
+              className="relative z-10"
+            >
               <ArrowRight className="w-6 h-6" />
-            </a>
-          </div>
-        </div>
+            </motion.div>
+          </motion.a>
+        </motion.div>
       </div>
     </section>
   );

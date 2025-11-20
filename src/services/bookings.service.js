@@ -1,8 +1,15 @@
 // src/services/bookings.service.js
 import { db } from "../firebase";
 import {
-  collection, query, where, orderBy, onSnapshot,
-  doc, runTransaction, serverTimestamp
+  collection,
+  query,
+  where,
+  orderBy,
+  onSnapshot,
+  doc,
+  runTransaction,
+  serverTimestamp,
+  updateDoc,              
 } from "firebase/firestore";
 
 /**
@@ -15,6 +22,12 @@ import {
  * @property {string} end       // HH:00
  * @property {"confirmed"|"cancelled"} status
  * @property {any=} createdAt
+ *
+ * // 🔽 NUEVO: campos de pago (nivel 1)
+ * @property {"pending"|"paid"|"failed"} [paymentStatus]
+ * @property {string|null} [paymentMethod]
+ * @property {string|null} [paymentNote]
+ * @property {any=} paymentUpdatedAt
  */
 
 /** Regex helpers */
@@ -51,11 +64,12 @@ export function buildBookingId(tid, date /*YYYY-MM-DD*/, start /*HH:00*/) {
  * - Garantiza formato
  * - ID único por franja
  * - status = "confirmed"
- * @param {{ tid: string, uid: string, date: string, start: string, end?: string }} p
+ * - paymentStatus = "pending"
+ * @param {{ tid: string, uid: string, date: string, start: string, end?: string, amount?: number }} p
  * @returns {Promise<string>} bookingId
  */
 export async function createBooking(p) {
-  const { tid, uid, date, start } = p;
+  const { tid, uid, date, start, amount = 0 } = p;
   if (!tid) throw new Error("Missing tid");
   if (!uid) throw new Error("Missing uid");
   assertYMD(date);
@@ -72,12 +86,39 @@ export async function createBooking(p) {
     if (snap.exists()) throw new Error("already-booked");
     /** @type {Booking} */
     const data = {
-      tid, uid, date, start, end,
+      tid,
+      uid,
+      date,
+      start,
+      end,
       status: "confirmed",
       createdAt: serverTimestamp(),
+
+      // 🔽 Inicializamos info de pago (nivel 1)
+      paymentStatus: "pending",   // o "pendiente" si prefieres
+      paymentMethod: null,
+      paymentNote: null,
+      paymentUpdatedAt: null,
+      amount, // Monto de la reserva
     };
     tx.set(ref, data);
   });
+
+  // 🔽 Crear documento de pago automáticamente si amount > 0
+  if (amount > 0) {
+    const { createPayment } = await import("./payments");
+    try {
+      await createPayment({
+        bookingId: id,
+        clientId: uid,
+        technicianId: tid,
+        amount,
+      });
+    } catch (err) {
+      console.warn("No pudimos crear el documento de pago:", err);
+      // No lanzamos error - la reserva se creó igualmente
+    }
+  }
 
   return id;
 }
@@ -98,6 +139,26 @@ export async function cancelBooking(id) {
 }
 
 /**
+ * 🔹 Nivel 1 pagos: marcar una reserva como pagada.
+ * Se puede llamar desde un panel de técnico o admin.
+ * @param {string} id
+ * @param {{ method?: string, note?: string }} p
+ */
+export async function markBookingPaid(id, p = {}) {
+  const { method, note } = p;
+  const ref = doc(db, "bookings", id);
+
+  await updateDoc(ref, {
+    paymentStatus: "paid",
+    paymentMethod: method || "manual",
+    paymentNote: note || "",
+    paymentUpdatedAt: serverTimestamp(),
+    // opcional: mantener updatedAt sincronizado
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/**
  * Suscribe reservas por UID (Mis reservas).
  * @param {string} uid
  * @param {(rows: Booking[]) => void} cb
@@ -112,9 +173,13 @@ export function subscribeBookingsByUid(uid, cb, errCb) {
     orderBy("date", "asc"),
     orderBy("start", "asc")
   );
-  return onSnapshot(qRef, (snap) => {
-    cb(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-  }, errCb);
+  return onSnapshot(
+    qRef,
+    (snap) => {
+      cb(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    },
+    errCb
+  );
 }
 
 /**
@@ -132,7 +197,11 @@ export function subscribeBookingsByTid(tid, cb, errCb) {
     orderBy("date", "asc"),
     orderBy("start", "asc")
   );
-  return onSnapshot(qRef, (snap) => {
-    cb(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-  }, errCb);
+  return onSnapshot(
+    qRef,
+    (snap) => {
+      cb(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    },
+    errCb
+  );
 }

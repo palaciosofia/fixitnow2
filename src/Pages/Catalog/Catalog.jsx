@@ -229,7 +229,7 @@ export default function Catalog() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
-      {/* Hero Section espectacular */}
+      {/* Hero Section mejorado */}
       <div className="relative overflow-hidden bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600">
         {/* Elementos decorativos de fondo */}
         <div className="absolute inset-0 overflow-hidden">
@@ -252,7 +252,7 @@ export default function Catalog() {
               </div>
             </div>
             
-            <h1 className="text-4xl md:text-6xl font-black text-white mb-6 leading-tight">
+            <h1 className="text-4xl md:text-6xl font-black text-white mb-6 leading-tight" style={{fontFamily: 'Space Grotesk, sans-serif'}}>
               Encuentra el <span className="text-yellow-300">Técnico Perfecto</span>
             </h1>
             
@@ -285,78 +285,40 @@ export default function Catalog() {
         </div>
       </div>
 
-      {/* Controles de filtros premium */}
-      <div className="container mx-auto px-4 py-8">
-        <div className="bg-white rounded-3xl shadow-2xl border border-white/20 backdrop-blur-sm p-8 mb-8 relative overflow-hidden">
-          {/* Decoración de fondo */}
-          <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-emerald-100 to-teal-100 rounded-full blur-3xl opacity-60"></div>
-          
-          <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 relative z-10">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl flex items-center justify-center shadow-lg">
-                <span className="text-white text-lg">🎯</span>
-              </div>
-              <div>
-                <h2 className="text-2xl font-bold text-gray-900">Filtros Inteligentes</h2>
-                <p className="text-gray-600">Personaliza tu búsqueda y encuentra exactamente lo que necesitas</p>
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-4">
-              <div className="px-4 py-2 bg-gradient-to-r from-emerald-100 to-teal-100 rounded-2xl border border-emerald-200">
-                <span className="text-sm font-semibold text-emerald-800">
-                  {view.length} resultado{view.length !== 1 ? 's' : ''} encontrado{view.length !== 1 ? 's' : ''}
-                </span>
-              </div>
-              
-              <button
-                onClick={onClear}
-                className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl bg-white border-2 border-gray-200 hover:border-gray-300 hover:shadow-lg transition-all duration-200 font-medium text-gray-700"
-              >
-                <span className="text-lg">🔄</span>
-                Limpiar Filtros
-              </button>
-            </div>
-          </div>
-        </div>
-
+      {/* Main Content Grid Layout */}
+      <div className="container mx-auto px-4 py-12">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-          {/* Sidebar mejorado */}
+          {/* Sidebar Filtros - 1 col */}
           <div className="lg:col-span-1">
-            <div className="sticky top-8">
-              <FilterSidebar
-                allItems={items}
-                draft={draft}
-                onDraftChange={onDraftChange}
-                onApply={onApply}
-                onClear={onClear}
-                showPriceSort
-                loading={loading}
-              />
-            </div>
+            <FilterSidebar
+              allItems={items}
+              draft={draft}
+              onDraftChange={onDraftChange}
+              onApply={onApply}
+              onClear={onClear}
+              loading={loading}
+            />
           </div>
 
-          {/* Grid principal mejorado */}
-          <div className="lg:col-span-3">
+          {/* Main Content - 3 cols */}
+          <div className="lg:col-span-3 space-y-8">
             {/* Loading skeleton espectacular */}
             {!initialLoaded && (
               <div className="space-y-8">
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                   {Array.from({ length: 6 }).map((_, i) => (
-                    <div key={i} className="bg-white rounded-3xl shadow-xl border border-gray-100 p-8 animate-pulse">
-                      <div className="flex items-center gap-4 mb-6">
-                        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-gray-200 to-gray-300" />
-                        <div className="flex-1 space-y-3">
-                          <div className="h-5 bg-gradient-to-r from-gray-200 to-gray-300 rounded-xl w-3/4" />
-                          <div className="h-4 bg-gradient-to-r from-gray-200 to-gray-300 rounded-lg w-1/2" />
-                        </div>
-                      </div>
+                    <div key={i} className="bg-white rounded-3xl shadow-lg border-2 border-gray-100 p-6 animate-pulse hover:shadow-xl transition-all duration-300">
+                      <div className="h-48 bg-gradient-to-br from-gray-200 to-gray-300 rounded-2xl mb-4" />
                       <div className="space-y-3">
+                        <div className="h-6 bg-gradient-to-r from-gray-200 to-gray-300 rounded-xl w-3/4" />
+                        <div className="h-4 bg-gradient-to-r from-gray-200 to-gray-300 rounded-lg w-1/2" />
                         <div className="h-4 bg-gradient-to-r from-gray-200 to-gray-300 rounded-lg" />
                         <div className="h-4 bg-gradient-to-r from-gray-200 to-gray-300 rounded-lg w-5/6" />
-                        <div className="h-4 bg-gradient-to-r from-gray-200 to-gray-300 rounded-lg w-4/6" />
                       </div>
-                      <div className="mt-6 h-12 bg-gradient-to-r from-gray-200 to-gray-300 rounded-2xl" />
+                      <div className="mt-6 flex gap-2">
+                        <div className="flex-1 h-12 bg-gradient-to-r from-gray-200 to-gray-300 rounded-xl" />
+                        <div className="flex-1 h-12 bg-gradient-to-r from-gray-200 to-gray-300 rounded-xl" />
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -365,19 +327,20 @@ export default function Catalog() {
 
             {/* Error state premium */}
             {error && initialLoaded && (
-              <div className="bg-white rounded-3xl shadow-xl border-2 border-red-200 p-8 mb-8">
-                <div className="flex items-center gap-4 mb-4">
-                  <div className="w-12 h-12 bg-red-100 rounded-2xl flex items-center justify-center">
-                    <span className="text-red-600 text-xl">⚠️</span>
+              <div className="bg-gradient-to-br from-white to-red-50 rounded-3xl shadow-xl border-2 border-red-200 p-8 relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-red-100/40 rounded-full blur-3xl"></div>
+                <div className="relative z-10 flex items-center gap-4 mb-4">
+                  <div className="w-14 h-14 bg-red-100 rounded-2xl flex items-center justify-center text-2xl">
+                    ⚠️
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold text-red-800">Oops! Algo salió mal</h3>
-                    <p className="text-red-600">{error}</p>
+                    <h3 className="text-xl font-bold text-red-800" style={{fontFamily: 'Space Grotesk, sans-serif'}}>Oops! Algo salió mal</h3>
+                    <p className="text-red-600 text-sm">{error}</p>
                   </div>
                 </div>
                 <button
                   onClick={() => window.location.reload()}
-                  className="px-6 py-3 bg-red-600 text-white rounded-2xl font-semibold hover:bg-red-700 transition-colors"
+                  className="mt-4 px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 text-white rounded-2xl font-bold hover:shadow-lg transition-all duration-200"
                 >
                   Reintentar
                 </button>
@@ -386,54 +349,54 @@ export default function Catalog() {
 
             {/* Empty state espectacular */}
             {initialLoaded && view.length === 0 && !loading && !error && (
-              <div className="bg-white rounded-3xl shadow-xl border border-gray-100 p-12 text-center">
-                <div className="w-24 h-24 bg-gradient-to-br from-gray-100 to-gray-200 rounded-3xl flex items-center justify-center mx-auto mb-6">
-                  <span className="text-4xl">🔍</span>
+              <div className="bg-gradient-to-br from-white via-emerald-50/20 to-white rounded-3xl shadow-xl border-2 border-gray-100 p-16 text-center relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-48 h-48 bg-emerald-100/20 rounded-full blur-3xl -mr-24 -mt-24"></div>
+                <div className="relative z-10">
+                  <div className="w-28 h-28 bg-gradient-to-br from-gray-100 to-gray-200 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-lg">
+                    <span className="text-6xl">🔍</span>
+                  </div>
+                  <h3 className="text-3xl font-bold text-gray-900 mb-4" style={{fontFamily: 'Space Grotesk, sans-serif'}}>No encontramos técnicos</h3>
+                  <p className="text-gray-600 mb-8 max-w-md mx-auto text-lg leading-relaxed">
+                    No hay técnicos que coincidan con tus filtros actuales. 
+                    Prueba ajustar los rangos de precio o seleccionar otras especialidades.
+                  </p>
+                  <button
+                    onClick={onClear}
+                    className="px-8 py-4 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-2xl font-semibold hover:from-emerald-700 hover:to-teal-700 transition-all transform hover:scale-105 shadow-lg"
+                  >
+                    Limpiar todos los filtros
+                  </button>
                 </div>
-                <h3 className="text-2xl font-bold text-gray-900 mb-4">No encontramos técnicos</h3>
-                <p className="text-gray-600 mb-6 max-w-md mx-auto">
-                  No hay técnicos que coincidan con tus filtros actuales. 
-                  Prueba ajustar los rangos de precio o seleccionar otras especialidades.
-                </p>
-                <button
-                  onClick={onClear}
-                  className="px-8 py-4 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-2xl font-semibold hover:from-emerald-700 hover:to-teal-700 transition-all transform hover:scale-105 shadow-lg"
-                >
-                  Limpiar todos los filtros
-                </button>
               </div>
             )}
 
             {/* Grid de resultados premium */}
             {view.length > 0 && (
               <>
-                <div className="mb-8">
-                  <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-lg flex items-center justify-center">
-                          <span className="text-white text-sm font-bold">✓</span>
-                        </div>
-                        <span className="text-lg font-semibold text-gray-900">
-                          Mostrando <span className="text-emerald-600">{view.length}</span> técnico{view.length !== 1 ? 's' : ''}
-                        </span>
+                <div className="bg-white rounded-2xl shadow-lg border-2 border-gray-100 p-6">
+                  <div className="flex items-center justify-between gap-4 flex-wrap">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-lg flex items-center justify-center">
+                        <span className="text-white text-sm font-bold">✓</span>
                       </div>
-                      {filters.q && (
-                        <div className="px-4 py-2 bg-blue-100 text-blue-800 rounded-xl border border-blue-200">
-                          <span className="text-sm font-medium">Filtrado por: "{filters.q}"</span>
-                        </div>
-                      )}
+                      <span className="text-lg font-semibold text-gray-900">
+                        Mostrando <span className="text-emerald-600 font-black">{view.length}</span> técnico{view.length !== 1 ? 's' : ''}
+                      </span>
                     </div>
+                    {filters.q && (
+                      <div className="px-4 py-2 bg-blue-100 text-blue-800 rounded-xl border border-blue-200">
+                        <span className="text-sm font-medium">Búsqueda: "<strong>{filters.q}</strong>"</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 mb-12">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                   {view.map((t, i) => (
                     <div 
                       key={getTechId(t) || i} 
-                      className="transform hover:scale-105 hover:-translate-y-2 transition-all duration-300 hover:shadow-2xl"
                       style={{
-                        animationDelay: `${i * 100}ms`,
+                        animationDelay: `${i * 50}ms`,
                         animation: initialLoaded ? 'fadeInUp 0.6s ease-out forwards' : 'none'
                       }}
                     >
@@ -443,7 +406,7 @@ export default function Catalog() {
                 </div>
 
                 {/* Paginación espectacular */}
-                <div className="flex justify-center">
+                <div className="flex justify-center pt-8">
                   {cursor ? (
                     <button
                       onClick={loadMore}
@@ -459,7 +422,7 @@ export default function Catalog() {
                         ) : (
                           <>
                             <span className="text-xl">⬇️</span>
-                            Cargar más técnicos
+                            Cargar más técnicos ({view.length} visto)
                           </>
                         )}
                       </span>
@@ -469,7 +432,7 @@ export default function Catalog() {
                     </button>
                   ) : (
                     initialLoaded && (
-                      <div className="text-center p-8 bg-white rounded-2xl shadow-lg border border-gray-100">
+                      <div className="text-center p-8 bg-white rounded-2xl shadow-lg border-2 border-gray-100">
                         <div className="w-16 h-16 bg-gradient-to-br from-emerald-100 to-teal-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
                           <span className="text-2xl">🎉</span>
                         </div>

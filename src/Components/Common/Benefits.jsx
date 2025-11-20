@@ -1,156 +1,334 @@
-import { CheckCircle, ShieldCheck, CreditCard, Star, Truck, Home, Tag, Sparkles, ArrowRight, Shield } from "lucide-react";
+import { CheckCircle, ShieldCheck, CreditCard, Star, Truck, Home, Tag, Sparkles, ArrowRight, Shield, Users, Clock, Award, Zap, Heart, Target, TrendingUp } from "lucide-react";
+import { motion } from "framer-motion";
+import CountUp from "react-countup";
+import { useInView } from "react-intersection-observer";
+import { useState, useEffect } from "react";
 import SectionTitle from "../SectionTitle/SectionTitle";
+import heroImg1 from "../../assets/Hero/hero_1.png";
 
 export default function Benefits() {
-  const items = [
-    { 
-      id: 1, 
-      title: "Técnicos Verificados", 
-      desc: "Perfiles revisados y certificados con experiencia comprobada para tu total tranquilidad.", 
-      icon: ShieldCheck, 
-      gradient: "from-emerald-500 to-teal-600",
-      bgGradient: "from-emerald-50 to-teal-50",
-      shadowColor: "shadow-emerald-500/25"
+  const [ref, inView] = useInView({
+    triggerOnce: true,
+    threshold: 0.1,
+  });
+
+  const stats = [
+    {
+      id: 1,
+      number: 500,
+      label: "Técnicos Verificados",
+      icon: Users,
+      color: "emerald",
+      suffix: "+"
     },
-    { 
-      id: 2, 
-      title: "Tiendas Especializadas", 
-      desc: "Red curada de tiendas profesionales con servicios de alta calidad y garantía.", 
-      icon: Home, 
-      gradient: "from-blue-500 to-cyan-600",
-      bgGradient: "from-blue-50 to-cyan-50",
-      shadowColor: "shadow-blue-500/25"
+    {
+      id: 2,
+      number: 10000,
+      label: "Servicios Completados",
+      icon: CheckCircle,
+      color: "blue",
+      suffix: "+"
     },
-    { 
-      id: 3, 
-      title: "Pago 100% Seguro", 
-      desc: "Múltiples métodos de pago con cifrado bancario y protección total de tus datos.", 
-      icon: CreditCard, 
-      gradient: "from-purple-500 to-violet-600",
-      bgGradient: "from-purple-50 to-violet-50",
-      shadowColor: "shadow-purple-500/25"
+    {
+      id: 3,
+      number: 4.9,
+      label: "Calificación Promedio",
+      icon: Star,
+      color: "yellow",
+      suffix: "★",
+      decimals: 1
     },
-    { 
-      id: 4, 
-      title: "Productos Premium", 
-      desc: "Selección exclusiva de productos y servicios destacados por calidad superior.", 
-      icon: Tag, 
-      gradient: "from-orange-500 to-red-600",
-      bgGradient: "from-orange-50 to-red-50",
-      shadowColor: "shadow-orange-500/25"
-    },
-    { 
-      id: 5, 
-      title: "Soporte Instantáneo", 
-      desc: "Atención al cliente 24/7 con respuesta inmediata cuando más lo necesitas.", 
-      icon: Truck, 
-      gradient: "from-pink-500 to-rose-600",
-      bgGradient: "from-pink-50 to-rose-50",
-      shadowColor: "shadow-pink-500/25"
-    },
-    { 
-      id: 6, 
-      title: "Garantía Total", 
-      desc: "Respaldo completo en todos los servicios con políticas de satisfacción garantizada.", 
-      icon: Star, 
-      gradient: "from-indigo-500 to-purple-600",
-      bgGradient: "from-indigo-50 to-purple-50",
-      shadowColor: "shadow-indigo-500/25"
+    {
+      id: 4,
+      number: 24,
+      label: "Soporte Disponible",
+      icon: Clock,
+      color: "purple",
+      suffix: "/7"
     },
   ];
 
+  const features = [
+    {
+      id: 1,
+      title: "Técnicos Verificados",
+      description: "Perfiles revisados y certificados con experiencia comprobada para tu total tranquilidad.",
+      icon: ShieldCheck,
+      color: "emerald"
+    },
+    {
+      id: 2,
+      title: "Respuesta Inmediata",
+      description: "Atención al cliente 24/7 con respuesta inmediata cuando más lo necesitas.",
+      icon: Zap,
+      color: "blue"
+    },
+    {
+      id: 3,
+      title: "Garantía Total",
+      description: "Respaldo completo en todos los servicios con políticas de satisfacción garantizada.",
+      icon: Shield,
+      color: "purple"
+    }
+  ];
+
+  const getColorClasses = (color) => {
+    const colorMap = {
+      emerald: {
+        bg: "from-emerald-500 to-teal-600",
+        text: "from-emerald-600 to-teal-600",
+        light: "bg-emerald-50",
+        border: "border-emerald-200"
+      },
+      blue: {
+        bg: "from-blue-500 to-cyan-600", 
+        text: "from-blue-600 to-cyan-600",
+        light: "bg-blue-50",
+        border: "border-blue-200"
+      },
+      yellow: {
+        bg: "from-yellow-500 to-orange-500",
+        text: "from-yellow-600 to-orange-600",
+        light: "bg-yellow-50",
+        border: "border-yellow-200"
+      },
+      purple: {
+        bg: "from-purple-500 to-violet-600",
+        text: "from-purple-600 to-violet-600", 
+        light: "bg-purple-50",
+        border: "border-purple-200"
+      }
+    };
+    return colorMap[color] || colorMap.emerald;
+  };
+
   return (
-    <section className="bg-gradient-to-br from-gray-50 via-white to-blue-50 py-20 relative overflow-hidden">
-      {/* Elementos decorativos */}
+    <section className="bg-gradient-to-br from-slate-50 via-white to-blue-50 py-20 relative overflow-hidden">
+      {/* Elementos decorativos de fondo */}
       <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute top-20 left-10 w-72 h-72 bg-emerald-200/10 rounded-full blur-3xl"></div>
-        <div className="absolute bottom-20 right-10 w-96 h-96 bg-blue-200/10 rounded-full blur-3xl"></div>
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-purple-200/10 rounded-full blur-3xl"></div>
+        <div className="absolute top-20 left-20 w-96 h-96 bg-emerald-200/10 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute bottom-20 right-20 w-80 h-80 bg-blue-200/10 rounded-full blur-3xl animate-pulse delay-1000"></div>
+        <div className="absolute top-1/2 left-1/4 w-64 h-64 bg-purple-200/10 rounded-full blur-3xl animate-pulse delay-500"></div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 relative z-10">
-        {/* Header*/}
-        <div className="mb-16">
-          <SectionTitle 
-            title="¿Por Qué Elegirnos?" 
-            subtitle="Calidad premium, seguridad garantizada y la mejor experiencia en servicios técnicos"
-            variant="hero"
-            icon="star"
-            textAlign="center"
-            mb="mb-0"
-          />
-        </div>
-
-        {/* Grid premium de beneficios */}
-        <div className="grid gap-8 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 mb-12">
-          {items.map((item, index) => {
-            const Icon = item.icon;
-            return (
-              <div
-                key={item.id}
-                className="group relative bg-white/80 backdrop-blur-sm rounded-3xl shadow-xl border border-white/20 p-8 hover:shadow-2xl hover:-translate-y-2 transition-all duration-500 overflow-hidden"
-                style={{
-                  animationDelay: `${index * 150}ms`
-                }}
+      <div className="max-w-7xl mx-auto px-4 relative z-10" ref={ref}>
+        
+        {/* Sección principal con imagen y estadísticas */}
+        <motion.div 
+          initial={{ opacity: 0, y: 50 }}
+          animate={inView ? { opacity: 1, y: 0 } : { opacity: 0, y: 50 }}
+          transition={{ duration: 0.8 }}
+          className="grid lg:grid-cols-2 gap-16 items-center mb-20"
+        >
+          
+          {/* Contenido de texto y estadísticas */}
+          <div className="space-y-8">
+            {/* Título principal */}
+            <div className="space-y-6">
+              <motion.div
+                initial={{ opacity: 0, x: -30 }}
+                animate={inView ? { opacity: 1, x: 0 } : { opacity: 0, x: -30 }}
+                transition={{ duration: 0.6, delay: 0.2 }}
+                className="flex items-center gap-3"
               >
-                {/* Decoración de fondo */}
-                <div className={`absolute top-0 right-0 w-32 h-32 bg-gradient-to-br ${item.bgGradient} rounded-full blur-2xl opacity-40 group-hover:opacity-60 transition-opacity duration-300`}></div>
-                <div className="absolute -top-10 -right-10 w-20 h-20 bg-white/20 rounded-full blur-xl"></div>
-
-                {/* Icono principal */}
-                <div className={`w-16 h-16 bg-gradient-to-br ${item.gradient} rounded-2xl flex items-center justify-center text-white shadow-lg mb-6 group-hover:scale-110 group-hover:rotate-3 transition-all duration-300 relative z-10`}>
-                  <Icon className="w-8 h-8" />
+                <div className="w-12 h-12 bg-gradient-to-r from-emerald-500 to-teal-600 rounded-2xl flex items-center justify-center">
+                  <Target className="w-6 h-6 text-white" />
                 </div>
+                <span className="text-lg font-bold text-emerald-600 uppercase tracking-wider">Los Números No Mienten</span>
+              </motion.div>
+              
+              <motion.h2 
+                initial={{ opacity: 0, x: -30 }}
+                animate={inView ? { opacity: 1, x: 0 } : { opacity: 0, x: -30 }}
+                transition={{ duration: 0.6, delay: 0.4 }}
+                className="text-4xl md:text-5xl lg:text-6xl font-black leading-tight text-gray-900"
+              >
+                Notables{" "}
+                <span className="bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent">
+                  logros
+                </span>{" "}
+                y{" "}
+                <span className="bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent">
+                  estadísticas
+                </span>{" "}
+                de nuestra plataforma de servicios técnicos.
+              </motion.h2>
+              
+              <motion.p 
+                initial={{ opacity: 0, x: -30 }}
+                animate={inView ? { opacity: 1, x: 0 } : { opacity: 0, x: -30 }}
+                transition={{ duration: 0.6, delay: 0.6 }}
+                className="text-xl text-gray-600 leading-relaxed max-w-2xl"
+              >
+                Hitos y resultados destacados de nuestra experiencia conectando clientes con técnicos profesionales de confianza.
+              </motion.p>
+            </div>
 
-                {/* Contenido */}
-                <div className="relative z-10">
-                  <h3 className="text-xl font-black text-gray-900 mb-4 group-hover:text-gray-700 transition-colors">
-                    {item.title}
-                  </h3>
-                  <p className="text-gray-600 leading-relaxed group-hover:text-gray-700 transition-colors">
-                    {item.desc}
-                  </p>
-                </div>
+            {/* Estadísticas animadas */}
+            <div className="grid grid-cols-2 gap-6">
+              {stats.map((stat, index) => {
+                const Icon = stat.icon;
+                const colors = getColorClasses(stat.color);
+                
+                return (
+                  <motion.div
+                    key={stat.id}
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={inView ? { opacity: 1, scale: 1 } : { opacity: 0, scale: 0.8 }}
+                    transition={{ duration: 0.6, delay: 0.8 + index * 0.1 }}
+                    className={`${colors.light} ${colors.border} border-2 rounded-2xl p-6 hover:shadow-xl transition-all duration-300 group hover:scale-105`}
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className={`w-12 h-12 bg-gradient-to-r ${colors.bg} rounded-xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300`}>
+                        <Icon className="w-6 h-6 text-white" />
+                      </div>
+                      <div>
+                        <div className={`text-3xl md:text-4xl font-black bg-gradient-to-r ${colors.text} bg-clip-text text-transparent`}>
+                          {inView ? (
+                            <CountUp
+                              end={stat.number}
+                              duration={2.5}
+                              delay={0.5}
+                              suffix={stat.suffix}
+                              decimals={stat.decimals || 0}
+                              preserveValue
+                            />
+                          ) : (
+                            "0" + stat.suffix
+                          )}
+                        </div>
+                        <p className="text-sm font-semibold text-gray-600 leading-tight">
+                          {stat.label}
+                        </p>
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+            
+            {/* Características principales */}
+            <motion.div 
+              initial={{ opacity: 0, y: 30 }}
+              animate={inView ? { opacity: 1, y: 0 } : { opacity: 0, y: 30 }}
+              transition={{ duration: 0.6, delay: 1.2 }}
+              className="space-y-4"
+            >
+              {features.map((feature, index) => {
+                const Icon = feature.icon;
+                const colors = getColorClasses(feature.color);
+                
+                return (
+                  <motion.div
+                    key={feature.id}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={inView ? { opacity: 1, x: 0 } : { opacity: 0, x: -20 }}
+                    transition={{ duration: 0.6, delay: 1.4 + index * 0.1 }}
+                    className="flex items-start gap-4 group"
+                  >
+                    <div className={`w-10 h-10 bg-gradient-to-r ${colors.bg} rounded-xl flex items-center justify-center shadow-md group-hover:scale-110 transition-transform duration-300 mt-1`}>
+                      <Icon className="w-5 h-5 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-lg font-bold text-gray-900 group-hover:text-gray-700 transition-colors">
+                        {feature.title}
+                      </h3>
+                      <p className="text-gray-600 leading-relaxed">
+                        {feature.description}
+                      </p>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </motion.div>
 
-                {/* Brillo sutil */}
-                <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent rounded-3xl pointer-events-none"></div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Estadísticas premium */}
-        <div className="bg-white/60 backdrop-blur-sm rounded-3xl p-8 shadow-xl border border-white/20 mb-12">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
-            <div className="group">
-              <div className="text-3xl md:text-4xl font-black bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent group-hover:from-emerald-700 group-hover:to-teal-700 transition-all duration-300">
-                10,000+
-              </div>
-              <p className="text-gray-600 font-medium mt-2">Técnicos Activos</p>
-            </div>
-            <div className="group">
-              <div className="text-3xl md:text-4xl font-black bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent group-hover:from-blue-700 group-hover:to-cyan-700 transition-all duration-300">
-                50,000+
-              </div>
-              <p className="text-gray-600 font-medium mt-2">Servicios Completados</p>
-            </div>
-            <div className="group">
-              <div className="text-3xl md:text-4xl font-black bg-gradient-to-r from-purple-600 to-violet-600 bg-clip-text text-transparent group-hover:from-purple-700 group-hover:to-violet-700 transition-all duration-300">
-                4.9★
-              </div>
-              <p className="text-gray-600 font-medium mt-2">Calificación Promedio</p>
-            </div>
-            <div className="group">
-              <div className="text-3xl md:text-4xl font-black bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent group-hover:from-orange-700 group-hover:to-red-700 transition-all duration-300">
-                24/7
-              </div>
-              <p className="text-gray-600 font-medium mt-2">Soporte Disponible</p>
-            </div>
+            {/* Botón CTA */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={inView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
+              transition={{ duration: 0.6, delay: 1.8 }}
+            >
+              <a
+                href="/tecnicos"
+                className="inline-flex items-center gap-3 px-8 py-4 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold text-lg rounded-2xl shadow-xl hover:shadow-2xl hover:from-emerald-700 hover:to-teal-700 transition-all duration-300 transform hover:scale-105 group"
+              >
+                Conoce Más
+                <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+              </a>
+            </motion.div>
           </div>
-        </div>
 
-        {/* CTA final espectacular */}
-        <div className="text-center">
+          {/* Imagen profesional */}
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.8, rotate: 5 }}
+            animate={inView ? { opacity: 1, scale: 1, rotate: 0 } : { opacity: 0, scale: 0.8, rotate: 5 }}
+            transition={{ duration: 0.8, delay: 0.4 }}
+            className="relative"
+          >
+            {/* Elementos decorativos alrededor de la imagen */}
+            <div className="absolute inset-0 bg-gradient-to-br from-emerald-400/20 to-teal-600/20 rounded-full blur-3xl scale-110"></div>
+            <div className="absolute top-10 right-10 w-20 h-20 bg-yellow-400/30 rounded-full blur-2xl animate-pulse"></div>
+            <div className="absolute bottom-10 left-10 w-24 h-24 bg-blue-400/30 rounded-full blur-2xl animate-pulse delay-1000"></div>
+            
+            {/* Badge circular animado */}
+            <motion.div 
+              animate={{ rotate: 360 }}
+              transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+              className="absolute top-10 left-10 w-24 h-24 bg-gradient-to-r from-emerald-500 to-teal-600 rounded-full flex items-center justify-center text-white text-xs font-bold z-20 shadow-xl"
+            >
+              <div className="text-center">
+                <TrendingUp className="w-6 h-6 mx-auto mb-1" />
+                <div className="text-xs">Creciendo</div>
+              </div>
+            </motion.div>
+            
+            {/* Imagen principal */}
+            <div className="relative z-10">
+              <img 
+                src={heroImg1} 
+                alt="Técnico profesional verificado"
+                className="w-full max-w-md mx-auto rounded-full border-8 border-white/50 shadow-2xl hover:border-white/80 transition-all duration-500 transform hover:scale-105"
+              />
+              
+              {/* Badge de verificación */}
+              <div className="absolute bottom-8 right-8 bg-green-500 text-white px-4 py-2 rounded-xl flex items-center gap-2 shadow-xl z-30">
+                <CheckCircle className="w-4 h-4" />
+                <span className="text-sm font-bold">Verificado</span>
+              </div>
+              
+              {/* Mini badges flotantes */}
+              <motion.div 
+                animate={{ y: [-10, 10, -10] }}
+                transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+                className="absolute top-20 right-2 bg-white/90 backdrop-blur-sm px-3 py-2 rounded-xl shadow-lg border border-white/20"
+              >
+                <div className="flex items-center gap-2">
+                  <Star className="w-4 h-4 text-yellow-500" />
+                  <span className="text-sm font-bold text-gray-700">4.9</span>
+                </div>
+              </motion.div>
+              
+              <motion.div 
+                animate={{ y: [10, -10, 10] }}
+                transition={{ duration: 3, repeat: Infinity, ease: "easeInOut", delay: 1 }}
+                className="absolute bottom-32 left-2 bg-white/90 backdrop-blur-sm px-3 py-2 rounded-xl shadow-lg border border-white/20"
+              >
+                <div className="flex items-center gap-2">
+                  <Heart className="w-4 h-4 text-red-500" />
+                  <span className="text-sm font-bold text-gray-700">98%</span>
+                </div>
+              </motion.div>
+            </div>
+          </motion.div>
+        </motion.div>
+
+        {/* CTA final */}
+        <motion.div
+          initial={{ opacity: 0, y: 50 }}
+          animate={inView ? { opacity: 1, y: 0 } : { opacity: 0, y: 50 }}
+          transition={{ duration: 0.8, delay: 2 }}
+          className="text-center"
+        >
           <div className="bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 rounded-3xl p-8 shadow-2xl text-white relative overflow-hidden">
             {/* Efectos de fondo */}
             <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent"></div>
@@ -169,7 +347,7 @@ export default function Benefits() {
               </p>
               
               <a 
-                href="/#catalogo"
+                href="/tecnicos"
                 className="inline-flex items-center gap-4 px-8 py-4 bg-white text-emerald-600 font-black text-lg rounded-2xl shadow-lg hover:shadow-emerald-500/25 hover:bg-emerald-50 transition-all duration-300 transform hover:scale-105"
               >
                 <Shield className="w-6 h-6" />
@@ -178,7 +356,7 @@ export default function Benefits() {
               </a>
             </div>
           </div>
-        </div>
+        </motion.div>
       </div>
     </section>
   );

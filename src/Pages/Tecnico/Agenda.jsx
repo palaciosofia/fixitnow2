@@ -11,11 +11,23 @@ import {
   getDoc,
   updateDoc,
   deleteDoc,
+  serverTimestamp,   // 👈 añadido
 } from "firebase/firestore";
 import dayjs from "dayjs";
 import { useAuth } from "../../context/AuthProvider";
 import useMyTechId from "../../hooks/useMyTechId";
-import { Clock, User, Trash2, Check, X, Calendar, MapPin, MessageSquare, Star, Sparkles } from "lucide-react";
+import {
+  Clock,
+  User,
+  Trash2,
+  Check,
+  X,
+  Calendar,
+  MapPin,
+  MessageSquare,
+  Star,
+  Sparkles,
+} from "lucide-react";
 
 /* ---------- Helpers con scheduledAt: Timestamp ---------- */
 function keyFromTs(ts) {
@@ -127,7 +139,8 @@ export default function Agenda() {
     [rows]
   );
   const past = useMemo(
-    () => rows.filter((r) => isPastTs(r.scheduledAt) || r.status === "cancelada").reverse(),
+    () =>
+      rows.filter((r) => isPastTs(r.scheduledAt) || r.status === "cancelada").reverse(),
     [rows]
   );
 
@@ -148,7 +161,9 @@ export default function Agenda() {
     // Bloquea cancelación si ya pasó (y protección si falta poco)
     if (isPastTs(ts)) return alert("No puedes cancelar una reserva pasada.");
     if (isWithinNextHoursTs(ts, 2)) {
-      const okSoon = confirm("La reserva inicia pronto (≤ 2h). ¿Seguro que quieres cancelarla?");
+      const okSoon = confirm(
+        "La reserva inicia pronto (≤ 2h). ¿Seguro que quieres cancelarla?"
+      );
       if (!okSoon) return;
     } else {
       const ok = confirm("¿Cancelar esta reserva?");
@@ -166,51 +181,74 @@ export default function Agenda() {
     }
   }
 
-  if (loadingTid) return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center">
-      <div className="text-center">
-        <div className="w-16 h-16 bg-gradient-to-r from-emerald-500 to-teal-600 rounded-3xl flex items-center justify-center mx-auto mb-4">
-          <Sparkles className="w-8 h-8 text-white animate-pulse" />
+  // 🔹 Nivel 1: marcar reserva como pagada
+  async function markPaid(id) {
+    try {
+      await updateDoc(doc(db, "reservas", id), {
+        paymentStatus: "paid",        // o "pagado" si quieres
+        paymentMethod: "manual",      // para nivel 1 basta con algo genérico
+        paymentUpdatedAt: serverTimestamp(),
+      });
+      alert("Reserva marcada como pagada.");
+    } catch (e) {
+      console.error(e);
+      alert("No se pudo marcar como pagada.");
+    }
+  }
+
+  if (loadingTid)
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 bg-gradient-to-r from-emerald-500 to-teal-600 rounded-3xl flex items-center justify-center mx-auto mb-4">
+            <Sparkles className="w-8 h-8 text-white animate-pulse" />
+          </div>
+          <p className="text-lg font-semibold text-gray-700">
+            Buscando tu perfil de técnico…
+          </p>
         </div>
-        <p className="text-lg font-semibold text-gray-700">Buscando tu perfil de técnico…</p>
       </div>
-    </div>
-  );
-  
-  if (!tid) return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center">
-      <div className="text-center bg-white rounded-3xl p-8 shadow-2xl border border-gray-100 max-w-md">
-        <div className="w-16 h-16 bg-gradient-to-r from-red-500 to-pink-600 rounded-3xl flex items-center justify-center mx-auto mb-4">
-          <X className="w-8 h-8 text-white" />
+    );
+
+  if (!tid)
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="text-center bg-white rounded-3xl p-8 shadow-2xl border border-gray-100 max-w-md">
+          <div className="w-16 h-16 bg-gradient-to-r from-red-500 to-pink-600 rounded-3xl flex items-center justify-center mx-auto mb-4">
+            <X className="w-8 h-8 text-white" />
+          </div>
+          <h3 className="text-xl font-bold text-gray-900 mb-2">Perfil no encontrado</h3>
+          <p className="text-gray-600">
+            No encontramos tu técnico. Crea/actualiza tu perfil en /perfil.
+          </p>
         </div>
-        <h3 className="text-xl font-bold text-gray-900 mb-2">Perfil no encontrado</h3>
-        <p className="text-gray-600">No encontramos tu técnico. Crea/actualiza tu perfil en /perfil.</p>
       </div>
-    </div>
-  );
-  
-  if (loading) return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center">
-      <div className="text-center">
-        <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-3xl flex items-center justify-center mx-auto mb-4">
-          <Calendar className="w-8 h-8 text-white animate-bounce" />
+    );
+
+  if (loading)
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-3xl flex items-center justify-center mx-auto mb-4">
+            <Calendar className="w-8 h-8 text-white animate-bounce" />
+          </div>
+          <p className="text-lg font-semibold text-gray-700">Cargando agenda…</p>
         </div>
-        <p className="text-lg font-semibold text-gray-700">Cargando agenda…</p>
       </div>
-    </div>
-  );
-  
-  if (err) return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center">
-      <div className="text-center bg-white rounded-3xl p-8 shadow-2xl border border-red-200 max-w-md">
-        <div className="w-16 h-16 bg-gradient-to-r from-red-500 to-pink-600 rounded-3xl flex items-center justify-center mx-auto mb-4">
-          <X className="w-8 h-8 text-white" />
+    );
+
+  if (err)
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="text-center bg-white rounded-3xl p-8 shadow-2xl border border-red-200 max-w-md">
+          <div className="w-16 h-16 bg-gradient-to-r from-red-500 to-pink-600 rounded-3xl flex items-center justify-center mx-auto mb-4">
+            <X className="w-8 h-8 text-white" />
+          </div>
+          <h3 className="text-xl font-bold text-red-800 mb-2">Error</h3>
+          <p className="text-red-600">{err}</p>
         </div>
-        <h3 className="text-xl font-bold text-red-800 mb-2">Error</h3>
-        <p className="text-red-600">{err}</p>
       </div>
-    </div>
-  );
+    );
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
@@ -220,7 +258,7 @@ export default function Agenda() {
           {/* Decoración de fondo */}
           <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-emerald-100 to-teal-100 rounded-full blur-3xl opacity-60"></div>
           <div className="absolute bottom-0 left-0 w-24 h-24 bg-gradient-to-tr from-blue-100 to-purple-100 rounded-full blur-2xl opacity-40"></div>
-          
+
           <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 relative z-10">
             <div className="flex items-center gap-6">
               <div className="w-20 h-20 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-3xl flex items-center justify-center shadow-xl">
@@ -230,7 +268,9 @@ export default function Agenda() {
                 <h1 className="text-3xl md:text-4xl font-black bg-gradient-to-r from-gray-800 via-gray-700 to-gray-900 bg-clip-text text-transparent">
                   Mi Agenda Profesional
                 </h1>
-                <p className="text-gray-600 mt-2 text-lg">Gestiona tus reservas de manera inteligente y eficiente</p>
+                <p className="text-gray-600 mt-2 text-lg">
+                  Gestiona tus reservas de manera inteligente y eficiente
+                </p>
               </div>
             </div>
 
@@ -243,7 +283,7 @@ export default function Agenda() {
                 </div>
                 <div className="text-3xl font-black">{upcoming.length}</div>
               </div>
-              
+
               <div className="bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl p-6 text-white shadow-lg hover:shadow-xl transition-all duration-300 min-w-[120px]">
                 <div className="flex items-center gap-3 mb-2">
                   <Star className="w-6 h-6" />
@@ -265,6 +305,7 @@ export default function Agenda() {
           onCancel={cancel}
           emptyText="No tienes reservas próximas."
           isUpcoming={true}
+          onMarkPaid={markPaid}   // 👈 aquí lo pasamos
         />
 
         {/* Historial */}
@@ -277,23 +318,36 @@ export default function Agenda() {
           onCancel={null}
           emptyText="Sin historial todavía."
           isUpcoming={false}
+          onMarkPaid={null}
         />
       </div>
     </div>
   );
 }
 
-function SectionTech({ title, subtitle, groups, clientNames, onAccept, onCancel, emptyText, isUpcoming }) {
+function SectionTech({
+  title,
+  subtitle,
+  groups,
+  clientNames,
+  onAccept,
+  onCancel,
+  emptyText,
+  isUpcoming,
+  onMarkPaid,   // 👈 nueva prop
+}) {
   return (
     <section className="mb-12">
       {/* Header de sección */}
       <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 mb-6">
         <div className="flex items-center gap-4">
-          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${
-            isUpcoming 
-              ? 'bg-gradient-to-br from-emerald-500 to-teal-600' 
-              : 'bg-gradient-to-br from-blue-500 to-purple-600'
-          }`}>
+          <div
+            className={`w-12 h-12 rounded-2xl flex items-center justify-center ${
+              isUpcoming
+                ? "bg-gradient-to-br from-emerald-500 to-teal-600"
+                : "bg-gradient-to-br from-blue-500 to-purple-600"
+            }`}
+          >
             {isUpcoming ? (
               <Clock className="w-6 h-6 text-white" />
             ) : (
@@ -312,7 +366,9 @@ function SectionTech({ title, subtitle, groups, clientNames, onAccept, onCancel,
           <div className="w-20 h-20 bg-gradient-to-br from-gray-100 to-gray-200 rounded-3xl flex items-center justify-center mx-auto mb-6">
             <Calendar className="w-10 h-10 text-gray-400" />
           </div>
-          <h3 className="text-xl font-bold text-gray-900 mb-2">Sin citas programadas</h3>
+          <h3 className="text-xl font-bold text-gray-900 mb-2">
+            Sin citas programadas
+          </h3>
           <p className="text-gray-600">{emptyText}</p>
         </div>
       )}
@@ -327,8 +383,12 @@ function SectionTech({ title, subtitle, groups, clientNames, onAccept, onCancel,
                 <Calendar className="w-7 h-7 text-white" />
               </div>
               <div>
-                <h3 className="text-2xl font-bold">{dayjs(fecha).format("dddd")}</h3>
-                <p className="text-white/90 text-lg">{dayjs(fecha).format("DD MMMM YYYY")}</p>
+                <h3 className="text-2xl font-bold">
+                  {dayjs(fecha).format("dddd")}
+                </h3>
+                <p className="text-white/90 text-lg">
+                  {dayjs(fecha).format("DD MMMM YYYY")}
+                </p>
               </div>
             </div>
           </div>
@@ -339,37 +399,54 @@ function SectionTech({ title, subtitle, groups, clientNames, onAccept, onCancel,
               const when = it.scheduledAt?.toDate?.();
               const whenStr = when ? dayjs(when).format("HH:mm") : "—";
               const clientLabel =
-                clientNames[it.clientId] || it.clientName || it.clientEmail || it.clientId;
+                clientNames[it.clientId] ||
+                it.clientName ||
+                it.clientEmail ||
+                it.clientId;
 
               const status = normStatus(it.status);
               const past = isPastTs(it.scheduledAt);
               const canAccept = !!onAccept && status === "pending" && !past;
               const canCancel = !!onCancel && status !== "cancelled" && !past;
 
+              // 🔹 info de pago
+              const paymentStatus = it.paymentStatus || "pending";
+              const isPaid = paymentStatus === "paid";
+              const canMarkPaid =
+                !!onMarkPaid && !past && status === "confirmed" && !isPaid;
+
               return (
-                <div 
-                  key={it.id} 
+                <div
+                  key={it.id}
                   className="bg-white rounded-3xl border border-gray-100 p-6 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 relative overflow-hidden"
                   style={{
                     animationDelay: `${index * 100}ms`,
-                    animation: 'fadeInUp 0.6s ease-out forwards'
+                    animation: "fadeInUp 0.6s ease-out forwards",
                   }}
                 >
                   {/* Decoración lateral */}
-                  <div className={`absolute left-0 top-0 bottom-0 w-1 ${
-                    status === 'confirmed' ? 'bg-emerald-500' :
-                    status === 'cancelled' ? 'bg-red-500' :
-                    status === 'done' ? 'bg-blue-500' :
-                    'bg-yellow-500'
-                  }`}></div>
+                  <div
+                    className={`absolute left-0 top-0 bottom-0 w-1 ${
+                      status === "confirmed"
+                        ? "bg-emerald-500"
+                        : status === "cancelled"
+                        ? "bg-red-500"
+                        : status === "done"
+                        ? "bg-blue-500"
+                        : "bg-yellow-500"
+                    }`}
+                  ></div>
 
                   <div className="flex flex-col lg:flex-row items-start lg:items-center gap-6">
-                    
                     {/* Hora destacada */}
                     <div className="flex-shrink-0">
                       <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-2xl p-4 border border-emerald-200 text-center min-w-[100px]">
-                        <div className="text-xs text-emerald-600 font-semibold uppercase tracking-wider mb-1">Hora</div>
-                        <div className="text-2xl font-black text-emerald-700">{whenStr}</div>
+                        <div className="text-xs text-emerald-600 font-semibold uppercase tracking-wider mb-1">
+                          Hora
+                        </div>
+                        <div className="text-2xl font-black text-emerald-700">
+                          {whenStr}
+                        </div>
                       </div>
                     </div>
 
@@ -380,7 +457,9 @@ function SectionTech({ title, subtitle, groups, clientNames, onAccept, onCancel,
                           <User className="w-5 h-5 text-white" />
                         </div>
                         <div>
-                          <div className="font-bold text-gray-900 text-lg">{clientLabel}</div>
+                          <div className="font-bold text-gray-900 text-lg">
+                            {clientLabel}
+                          </div>
                           <div className="text-sm text-gray-500">Cliente</div>
                         </div>
                       </div>
@@ -389,8 +468,12 @@ function SectionTech({ title, subtitle, groups, clientNames, onAccept, onCancel,
                         <div className="flex items-start gap-3 bg-gray-50 rounded-xl p-4">
                           <MessageSquare className="w-5 h-5 text-gray-400 flex-shrink-0 mt-0.5" />
                           <div>
-                            <div className="text-sm font-medium text-gray-700 mb-1">Descripción del servicio</div>
-                            <div className="text-gray-600">{it.description}</div>
+                            <div className="text-sm font-medium text-gray-700 mb-1">
+                              Descripción del servicio
+                            </div>
+                            <div className="text-gray-600">
+                              {it.description}
+                            </div>
                           </div>
                         </div>
                       )}
@@ -403,12 +486,25 @@ function SectionTech({ title, subtitle, groups, clientNames, onAccept, onCancel,
                       )}
                     </div>
 
-                    {/* Estado y acciones */}
+                    {/* Estado, pago y acciones */}
                     <div className="flex-shrink-0 text-right space-y-4">
                       <StatusBadge status={status} />
-                      
-                      {(canAccept || canCancel) && (
-                        <div className="flex flex-col sm:flex-row gap-3">
+
+                      {/* Badge pago */}
+                      <div className="text-xs">
+                        {isPaid ? (
+                          <span className="inline-flex items-center px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200">
+                            💰 Pagado
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-3 py-1 rounded-full bg-yellow-50 text-yellow-700 font-semibold border border-yellow-200">
+                            💳 Pago pendiente
+                          </span>
+                        )}
+                      </div>
+
+                      {(canAccept || canCancel || canMarkPaid) && (
+                        <div className="flex flex-col sm:flex-row gap-3 justify-end">
                           {canAccept && (
                             <button
                               className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-semibold shadow-lg hover:shadow-emerald-500/25 transition-all duration-300 transform hover:scale-105"
@@ -419,14 +515,26 @@ function SectionTech({ title, subtitle, groups, clientNames, onAccept, onCancel,
                               Aceptar
                             </button>
                           )}
+
                           {canCancel && (
                             <button
-                              className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl border-2 border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 font-semibold transition-all duration-300"
+                              className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl border-2 border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 font-semibold transición-all duration-300"
                               onClick={() => onCancel(it.id, it.scheduledAt)}
                               title="Cancelar reserva"
                             >
                               <Trash2 className="w-5 h-5" />
                               Cancelar
+                            </button>
+                          )}
+
+                          {canMarkPaid && (
+                            <button
+                              className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl border-2 border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:border-emerald-300 font-semibold transition-all duration-300"
+                              onClick={() => onMarkPaid(it.id)}
+                              title="Marcar como pagada"
+                            >
+                              💰
+                              Marcar como pagada
                             </button>
                           )}
                         </div>
@@ -468,31 +576,37 @@ function normStatus(s = "") {
 function StatusBadge({ status }) {
   const statusConfig = {
     confirmed: {
-      className: "bg-gradient-to-r from-emerald-500 to-teal-600 text-white border-0 shadow-lg",
+      className:
+        "bg-gradient-to-r from-emerald-500 to-teal-600 text-white border-0 shadow-lg",
       label: "✓ Confirmada",
-      icon: "✓"
+      icon: "✓",
     },
     cancelled: {
-      className: "bg-gradient-to-r from-red-500 to-pink-600 text-white border-0 shadow-lg", 
+      className:
+        "bg-gradient-to-r from-red-500 to-pink-600 text-white border-0 shadow-lg",
       label: "✕ Cancelada",
-      icon: "✕"
+      icon: "✕",
     },
     done: {
-      className: "bg-gradient-to-r from-blue-500 to-purple-600 text-white border-0 shadow-lg",
-      label: "★ Completada", 
-      icon: "★"
+      className:
+        "bg-gradient-to-r from-blue-500 to-purple-600 text-white border-0 shadow-lg",
+      label: "★ Completada",
+      icon: "★",
     },
     pending: {
-      className: "bg-gradient-to-r from-yellow-400 to-orange-500 text-white border-0 shadow-lg",
+      className:
+        "bg-gradient-to-r from-yellow-400 to-orange-500 text-white border-0 shadow-lg",
       label: "⏳ Pendiente",
-      icon: "⏳"
+      icon: "⏳",
     },
   };
 
   const config = statusConfig[status] || statusConfig.pending;
 
   return (
-    <div className={`inline-flex items-center gap-2 text-sm font-bold px-4 py-2 rounded-2xl ${config.className}`}>
+    <div
+      className={`inline-flex items-center gap-2 text-sm font-bold px-4 py-2 rounded-2xl ${config.className}`}
+    >
       <span>{config.icon}</span>
       <span>{config.label}</span>
     </div>

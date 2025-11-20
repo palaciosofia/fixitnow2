@@ -246,3 +246,23 @@ export function subscribeTechnicians(params, cb, errCb) {
     errCb
   );
 }
+
+/**
+ * Obtiene TODOS los técnicos publicados de una sola vez
+ * Útil para la página de reseñas y búsqueda general
+ */
+export async function getAllTechs() {
+  const qy = query(
+    collection(db, TECHS),
+    where("publicado", "==", true),
+    orderBy("ratingPromedio", "desc")
+  );
+  
+  try {
+    const snapshot = await getDocs(qy);
+    return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+  } catch (error) {
+    console.error("Error fetching all technicians:", error);
+    return [];
+  }
+}

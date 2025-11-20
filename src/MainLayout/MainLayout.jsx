@@ -30,6 +30,13 @@ import Profile from "../Pages/Technicians/Profile";
 // ✅ NUEVO: Reservas (cliente) y Agenda (técnico)
 import MisReservas from "../Pages/Cliente/MisReservas";
 import Agenda from "../Pages/Tecnico/Agenda";
+// ✅ Página de Señas
+import Senias from "../Pages/Senias/Senias";
+// ✅ Página de Pagos
+import Pagos from "../Pages/Pagos/Pagos";
+// ✅ Mensajes
+import Mensajes from "../Pages/Mensajes/Mensajes";
+import Chat from "../Pages/Chat/Chat";
 
 const MainLayout = () => {
   useEffect(() => {
@@ -65,6 +72,8 @@ const MainLayout = () => {
         <Route path="tecnicos" element={<Catalog />} />
         {/* ✅ Perfil público por slug */}
         <Route path="tecnicos/:slug" element={<Profile />} />
+        {/* ✅ Señas - Servicios de lenguaje de señas */}
+        <Route path="senias" element={<Senias />} />
 
         {/* Compatibilidad: /catalogo → /tecnicos */}
         <Route path="catalogo" element={<Navigate to="/tecnicos" replace />} />
@@ -93,6 +102,16 @@ const MainLayout = () => {
           element={
             <ProtectedRoute allowedRoles={["cliente", "tecnico", "admin"]}>
               <MisReservas />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* ✅ NUEVO: Cliente → Pagos */}
+        <Route
+          path="pagos"
+          element={
+            <ProtectedRoute allowedRoles={["cliente", "tecnico", "admin"]}>
+              <Pagos />
             </ProtectedRoute>
           }
         />
@@ -131,6 +150,24 @@ const MainLayout = () => {
 
         {/* Bloqueo por rol */}
         <Route path="no-autorizado" element={<NoAutorizado />} />
+
+        {/* ✅ Mensajes */}
+        <Route
+          path="mensajes"
+          element={
+            <ProtectedRoute allowedRoles={["cliente", "tecnico", "admin"]}>
+              <Mensajes />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="chat/:otherUserId/:otherUserName"
+          element={
+            <ProtectedRoute allowedRoles={["cliente", "tecnico", "admin"]}>
+              <Chat />
+            </ProtectedRoute>
+          }
+        />
 
         {/* 404 */}
         <Route path="*" element={<Error />} />

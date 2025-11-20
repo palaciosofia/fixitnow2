@@ -1,6 +1,8 @@
 // src/Pages/Tecnico/Dashboard.jsx
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../context/AuthProvider";
+import useMyTechId from "../../hooks/useMyTechId";
+import dayjs from "dayjs";
 import {
   ensureMyTechnicianDoc,
   getMyTechnicianDoc,
@@ -9,10 +11,12 @@ import {
 } from "../../services/technicians";
 import { uploadToCloudinary } from "../../services/images";
 import { clThumb } from "../../utils/cloudinary";
+import TechnicianPaymentsTab from "../../Components/TechnicianPaymentsTab";
+import { getTechnicianReviews } from "../../services/reviews";
 import { 
   Check, X, CloudUpload, Plus, Save, Eye, Camera, User, MapPin, 
   Phone, Calendar, Award, Wrench, DollarSign, Star, Globe, 
-  Sparkles, Shield, Clock
+  Sparkles, Shield, Clock, MessageSquare
 } from "lucide-react";
 
 // ------ Catálogos ------
@@ -63,10 +67,14 @@ const EMPTY = {
 // =======================================
 export default function TecnicoDashboard() {
   const { user, role, loading: authLoading } = useAuth();
+  const { tid, loading: tidLoading } = useMyTechId(user?.uid);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [pubLoading, setPubLoading] = useState(false);
   const [msg, setMsg] = useState({ type: "", text: "" });
+  const [activeTab, setActiveTab] = useState("profile"); // "profile" | "payments" | "reviews"
+  const [reviews, setReviews] = useState([]);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
 
   const [docTech, setDocTech] = useState(null);
   const [form, setForm] = useState(EMPTY);
@@ -101,6 +109,25 @@ export default function TecnicoDashboard() {
     };
     boot();
   }, [user, role, authLoading]);
+
+  // ------- Cargar reseñas -------
+  useEffect(() => {
+    if (!tid) return;
+
+    setReviewsLoading(true);
+    const loadReviews = async () => {
+      try {
+        const techReviews = await getTechnicianReviews(tid);
+        setReviews(techReviews);
+      } catch (error) {
+        console.error("Error cargando reseñas:", error);
+      } finally {
+        setReviewsLoading(false);
+      }
+    };
+
+    loadReviews();
+  }, [tid]);
 
   // ------- Helpers de estado -------
   const set = (k, v) => setForm((s) => ({ ...s, [k]: v }));
@@ -419,6 +446,30 @@ export default function TecnicoDashboard() {
           </div>
         </div>
 
+        {/* Tabs */}
+        <div className="mb-8 mt-8 flex gap-2 border-b border-gray-300">
+          {[
+            { id: "profile", label: "👤 Mi Perfil", icon: User },
+            { id: "payments", label: "💰 Mis Pagos", icon: DollarSign },
+            { id: "reviews", label: "⭐ Mis Reseñas", icon: Star },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`px-6 py-3 font-bold transition-all border-b-2 ${
+                activeTab === tab.id
+                  ? "border-emerald-600 text-emerald-600"
+                  : "border-transparent text-gray-600 hover:text-gray-900"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Contenido de Tabs */}
+        {activeTab === "profile" && (
+          <>
         {/* Formularios mejorados */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
           {/* Columna 1 - Información Personal */}
@@ -748,6 +799,112 @@ export default function TecnicoDashboard() {
             </button>
           )}
         </div>
+        </>
+        )}
+
+        {/* Payments Tab */}
+        {activeTab === "payments" && (
+          <div className="bg-white rounded-3xl shadow-xl border border-white/20 backdrop-blur-sm p-8">
+            <TechnicianPaymentsTab technicianId={tid} />
+          </div>
+        )}
+
+        {/* Reviews Tab */}
+        {activeTab === "reviews" && (
+          <div className="bg-white rounded-3xl shadow-xl border border-white/20 backdrop-blur-sm p-8">
+            <ReviewsTab reviews={reviews} reviewsLoading={reviewsLoading} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// =======================================
+//   Subcomponente: ReviewsTab (Technician)
+// =======================================
+function ReviewsTab({ reviews, reviewsLoading }) {
+  if (reviewsLoading) {
+    return (
+      <div className="flex justify-center items-center py-12">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-500"></div>
+      </div>
+    );
+  }
+
+  if (!reviews || reviews.length === 0) {
+    return (
+      <div className="text-center py-12">
+        <MessageSquare className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+        <h3 className="text-xl font-semibold text-gray-600">No tienes reseñas aún</h3>
+        <p className="text-gray-500 mt-2">Las reseñas de tus clientes aparecerán aquí</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-2xl p-6 border border-emerald-200">
+          <p className="text-gray-600 text-sm font-medium">Total de Reseñas</p>
+          <p className="text-3xl font-bold text-emerald-600 mt-2">{reviews.length}</p>
+        </div>
+        <div className="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-2xl p-6 border border-blue-200">
+          <p className="text-gray-600 text-sm font-medium">Calificación Promedio</p>
+          <div className="flex items-center gap-2 mt-2">
+            <p className="text-3xl font-bold text-blue-600">
+              {(reviews.reduce((sum, r) => sum + (r.rating || 0), 0) / reviews.length).toFixed(1)}
+            </p>
+            <div className="flex gap-0.5">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <Star
+                  key={star}
+                  className={`w-5 h-5 ${
+                    star <= Math.round(reviews.reduce((sum, r) => sum + (r.rating || 0), 0) / reviews.length)
+                      ? "fill-yellow-400 text-yellow-400"
+                      : "text-gray-300"
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl p-6 border border-purple-200">
+          <p className="text-gray-600 text-sm font-medium">Clientes Satisfechos</p>
+          <p className="text-3xl font-bold text-purple-600 mt-2">
+            {reviews.filter((r) => r.rating >= 4).length}
+          </p>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        {reviews.map((review) => (
+          <div key={review.id} className="bg-gradient-to-r from-gray-50 to-white rounded-2xl border border-gray-200 p-6 hover:shadow-lg transition-shadow">
+            <div className="flex justify-between items-start mb-3">
+              <div>
+                <h4 className="font-semibold text-gray-800">{review.clientName || "Cliente"}</h4>
+                <p className="text-sm text-gray-500">
+                  {review.createdAt ? dayjs(review.createdAt.toDate()).format("D MMM YYYY, HH:mm") : "Fecha desconocida"}
+                </p>
+              </div>
+              <div className="flex gap-1">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <Star
+                    key={star}
+                    className={`w-5 h-5 ${
+                      star <= review.rating
+                        ? "fill-yellow-400 text-yellow-400"
+                        : "text-gray-300"
+                    }`}
+                  />
+                ))}
+              </div>
+            </div>
+            {review.comment && (
+              <p className="text-gray-700 leading-relaxed">{review.comment}</p>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   );

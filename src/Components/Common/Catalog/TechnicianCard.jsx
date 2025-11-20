@@ -1,6 +1,6 @@
 // src/Components/Common/Catalog/TechnicianCard.jsx
 import { Link, useNavigate } from "react-router-dom";
-import { Star, MapPin, Tag as TagIcon } from "lucide-react";
+import { Star, MapPin, Tag as TagIcon, CheckCircle, ArrowRight } from "lucide-react";
 
 const money = (v, moneda = "USD") =>
   typeof v === "number"
@@ -39,90 +39,114 @@ export default function TechnicianCard({ t }) {
   };
 
   return (
-    <article className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition transform hover:-translate-y-1 min-h-[260px]">
-      <div className="md:flex">
-        {/* Imagen */}
-        <div className="md:w-1/3 relative">
-          <img
-            src={foto}
-            alt={`Foto de ${nombre}`}
-            className="w-full h-56 md:h-full object-cover"
-            loading="lazy"
-          />
-          {/* overlay: verificado + rating */}
-          <div className="absolute left-3 top-3 flex items-center gap-2">
-            {t?.verificado && (
-              <span className="text-[11px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-semibold">
-                Verificado
-              </span>
-            )}
+    <article className="group bg-gradient-to-br from-white to-gray-50 rounded-3xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-2 border-gray-100 hover:border-emerald-200 min-h-[340px] flex flex-col">
+      {/* Imagen - Mejorada con overlay gradiente */}
+      <div className="relative h-48 md:h-56 overflow-hidden bg-gradient-to-br from-gray-200 to-gray-300">
+        <img
+          src={foto}
+          alt={`Foto de ${nombre}`}
+          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+          loading="lazy"
+        />
+        
+        {/* Overlay gradiente oscuro en la imagen */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent"></div>
+
+        {/* Rating Badge - Superior derecha */}
+        <div className="absolute right-4 top-4 bg-gradient-to-r from-yellow-400 to-orange-400 text-white rounded-full px-3 py-2 flex items-center gap-1 shadow-lg border-2 border-white">
+          <Star className="w-4 h-4 fill-current" />
+          <span className="font-bold text-sm">
+            {rating}
+            {count ? (
+              <span className="ml-1 text-xs opacity-90">({count})</span>
+            ) : null}
+          </span>
+        </div>
+
+        {/* Verificado Badge - Superior izquierda */}
+        {t?.verificado && (
+          <div className="absolute left-4 top-4 bg-emerald-500 text-white rounded-full px-3 py-2 flex items-center gap-1 shadow-lg border-2 border-white font-semibold text-xs">
+            <CheckCircle className="w-4 h-4" />
+            Verificado
           </div>
-          <div className="absolute right-3 bottom-3 bg-black/60 text-white rounded-full px-3 py-1 text-sm flex items-center gap-2">
-            <Star className="w-4 h-4 text-yellow-300" />{" "}
-            <span>
-              {rating}
-              {count ? (
-                <span className="ml-1 text-xs opacity-80">({count})</span>
-              ) : null}
-            </span>
+        )}
+      </div>
+
+      {/* Contenido - Con mejor espaciado */}
+      <div className="p-6 md:p-7 flex flex-col flex-grow">
+        {/* Nombre y ubicación */}
+        <div className="mb-4">
+          <h3 className="text-xl font-bold text-gray-900 line-clamp-1 leading-tight" style={{fontFamily: 'Space Grotesk, sans-serif'}}>
+            {nombre}
+          </h3>
+          <div className="mt-2 flex items-center gap-2 text-gray-600">
+            <MapPin className="w-4 h-4 text-emerald-500" />
+            <span className="text-sm font-medium">{ciudad}</span>
           </div>
         </div>
 
-        {/* Contenido */}
-        <div className="p-4 md:p-6 md:w-2/3 flex flex-col justify-between">
-          <div>
-            <h3 className="text-lg font-semibold leading-snug">
-              {nombre}
-            </h3>
-            <div className="mt-1 text-sm text-gray-500">{ciudad}</div>
+        {/* Descripción - Mejor legibilidad */}
+        <p className="text-sm text-gray-600 mb-5 line-clamp-2 leading-relaxed flex-grow">
+          {t.bioCorta || t.descripcion || "Sin descripción disponible."}
+        </p>
 
-            <p className="text-sm text-gray-600 mt-2 line-clamp-3">
-              {t.bioCorta || t.descripcion || "Sin descripción disponible."}
-            </p>
+        {/* Especialidades - Mejor presentación */}
+        <div className="mb-5">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Especialidades</p>
+          <div className="flex flex-wrap gap-2">
+            {especArr.slice(0, 3).map((s, i) => (
+              <span
+                key={i}
+                className="text-xs bg-gradient-to-r from-emerald-100 to-teal-100 text-emerald-800 px-3 py-1.5 rounded-full font-semibold border border-emerald-200 flex items-center gap-1.5"
+              >
+                <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
+                {s}
+              </span>
+            ))}
+            {especArr.length > 3 && (
+              <span className="text-xs bg-gray-100 text-gray-700 px-3 py-1.5 rounded-full font-semibold">
+                +{especArr.length - 3} más
+              </span>
+            )}
+          </div>
+        </div>
 
-            <div className="mt-3 flex items-center gap-2 flex-wrap">
-              {especArr.slice(0, 4).map((s, i) => (
-                <span
-                  key={i}
-                  className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full flex items-center gap-1"
-                >
-                  <TagIcon className="w-3 h-3 text-gray-500" /> {s}
-                </span>
-              ))}
-            </div>
+        {/* Divider */}
+        <div className="w-full h-px bg-gradient-to-r from-transparent via-gray-200 to-transparent mb-5"></div>
+
+        {/* Footer: Precio + Botones */}
+        <div className="space-y-3">
+          {/* Precio */}
+          <div className="flex items-baseline justify-between">
+            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Tarifa base</span>
+            <span className="text-lg font-black text-emerald-600" style={{fontFamily: 'Space Grotesk, sans-serif'}}>
+              {tarifa !== null
+                ? money(tarifa, t?.moneda || "USD")
+                : "A convenir"}
+            </span>
           </div>
 
-          <div className="mt-4 md:mt-6 flex items-center justify-between gap-3">
-            <div className="text-sm text-gray-700">
-              <div className="text-xs text-gray-500">Precio</div>
-              <div className="text-base font-semibold">
-                {tarifa !== null
-                  ? money(tarifa, t?.moneda || "USD")
-                  : "A convenir"}
-              </div>
-            </div>
+          {/* Botones - Full width mejorados */}
+          <div className="flex gap-3 pt-2">
+            <Link
+              to={perfilPath}
+              className="flex-1 text-center px-4 py-3 rounded-xl border-2 border-gray-300 bg-white hover:bg-gray-100 hover:border-emerald-400 text-sm font-semibold text-gray-700 transition-all duration-200 flex items-center justify-center gap-2"
+              aria-label={`Ver perfil de ${nombre}`}
+            >
+              <span>Perfil</span>
+            </Link>
 
-            {/* Botones: apilados en móvil, inline en desktop; full width en móvil para visibilidad */}
-            <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-              <Link
-                to={perfilPath}
-                className="w-full sm:flex-1 text-center px-3 py-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-sm font-medium"
-                aria-label={`Ver perfil de ${nombre}`}
-              >
-                Ver perfil
-              </Link>
-
-              <button
-                type="button"
-                onClick={goReservar}
-                disabled={!tid}
-                className="w-full sm:flex-1 px-4 py-2 rounded-lg bg-gradient-to-r from-teal-600 to-emerald-400 text-white font-semibold hover:from-teal-700 disabled:opacity-60 disabled:cursor-not-allowed"
-                aria-label={`Reservar con ${nombre}`}
-                title={tid ? "Reservar" : "Falta id del técnico"}
-              >
-                Reservar
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={goReservar}
+              disabled={!tid}
+              className="flex-1 px-4 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold hover:from-emerald-700 hover:to-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center gap-2 group/btn shadow-lg hover:shadow-xl"
+              aria-label={`Reservar con ${nombre}`}
+              title={tid ? "Reservar ahora" : "Falta id del técnico"}
+            >
+              <span>Reservar</span>
+              <ArrowRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" />
+            </button>
           </div>
         </div>
       </div>

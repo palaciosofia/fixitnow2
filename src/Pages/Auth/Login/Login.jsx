@@ -1,7 +1,7 @@
 // src/Pages/Auth/Login/Login.jsx
 import { useState } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
-import { loginUser } from "../../../services/auth";
+import { loginUser, loginWithGoogle } from "../../../services/auth"; 
 import { auth } from "../../../firebase";
 import { getIdTokenResult } from "firebase/auth";
 import { Mail, Lock, Eye, EyeOff, LogIn } from "lucide-react";
@@ -27,6 +27,38 @@ export default function Login() {
     return message || "No se pudo iniciar sesión.";
   };
 
+  
+  const navigateAfterLogin = async (profile) => {
+    const u = auth.currentUser;
+    let isAdmin = false;
+
+    if (u) {
+      const tokenRes = await getIdTokenResult(u, true);
+      isAdmin = tokenRes.claims?.admin === true;
+    }
+
+    // 1) Admin → /admin
+    if (isAdmin) {
+      nav("/admin", { replace: true });
+      return;
+    }
+
+    // 2) Si venía de una ruta protegida
+    const from = loc.state?.from;
+    if (from) {
+      nav(from, { replace: true });
+      return;
+    }
+
+    // 3) Por rol
+    const role = profile?.role;
+    if (role === "tecnico") {
+      nav("/mi-perfil", { replace: true });
+    } else {
+      nav("/", { replace: true });
+    }
+  };
+
   const onSubmit = async (e) => {
     e.preventDefault();
     if (loading) return;
@@ -38,39 +70,26 @@ export default function Login() {
     try {
       setLoading(true);
 
-      // sign-in y lectura del perfil (Firestore)
       const { profile } = await loginUser(form);
-
-      // claims para saber si es admin
-      const u = auth.currentUser;
-      let isAdmin = false;
-      if (u) {
-        const tokenRes = await getIdTokenResult(u, true);
-        isAdmin = tokenRes.claims?.admin === true;
-      }
-
-      // 1) Admin → /admin
-      if (isAdmin) {
-        nav("/admin", { replace: true });
-        return;
-      }
-
-      
-      const from = loc.state?.from;
-      if (from) {
-        nav(from, { replace: true });
-        return;
-      }
-
-      // 3) Por rol
-      const role = profile?.role;
-      if (role === "tecnico") {
-        nav("/mi-perfil", { replace: true });
-      } else {
-        // 4) Cliente (u otro) → Inicio
-        nav("/", { replace: true });
-      }
+      await navigateAfterLogin(profile);
     } catch (e) {
+      setErr(friendlyError(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  
+  const onGoogleLogin = async () => {
+    if (loading) return;
+    setErr("");
+
+    try {
+      setLoading(true);
+      const { profile } = await loginWithGoogle();
+      await navigateAfterLogin(profile);
+    } catch (e) {
+      console.error(e);
       setErr(friendlyError(e));
     } finally {
       setLoading(false);
@@ -85,7 +104,9 @@ export default function Login() {
             <LogIn className="w-7 h-7" />
           </div>
           <h1 className="text-2xl font-semibold">Bienvenido</h1>
-          <p className="text-sm text-gray-600 mt-1">Accede a tu cuenta para gestionar reservas y perfil.</p>
+          <p className="text-sm text-gray-600 mt-1">
+            Accede a tu cuenta para gestionar reservas y perfil.
+          </p>
         </div>
 
         {err && (
@@ -96,7 +117,9 @@ export default function Login() {
 
         <form onSubmit={onSubmit} className="space-y-4" noValidate>
           <div>
-            <label htmlFor="email" className="block text-sm mb-1">Correo</label>
+            <label htmlFor="email" className="block text-sm mb-1">
+              Correo
+            </label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
                 <Mail className="w-4 h-4" />
@@ -116,7 +139,9 @@ export default function Login() {
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-sm mb-1">Contraseña</label>
+            <label htmlFor="password" className="block text-sm mb-1">
+              Contraseña
+            </label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
                 <Lock className="w-4 h-4" />
@@ -147,22 +172,52 @@ export default function Login() {
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" className="form-checkbox" /> <span>Recordarme</span>
             </label>
-            <Link to="/auth/forgot" className="text-sm text-gray-600 hover:underline">Olvidé mi contraseña</Link>
+            <Link to="/auth/forgot" className="text-sm text-gray-600 hover:underline">
+              Olvidé mi contraseña
+            </Link>
           </div>
 
           <div className="flex flex-col gap-3">
+            {/* Botón normal correo/contraseña */}
             <button
               type="submit"
               disabled={loading}
               className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-teal-600 to-emerald-400 text-white font-medium shadow"
             >
-              {loading ? <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-white" /> : <LogIn className="w-4 h-4" />}
+              {loading ? (
+                <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-white" />
+              ) : (
+                <LogIn className="w-4 h-4" />
+              )}
               <span>{loading ? "Ingresando..." : "Entrar"}</span>
+            </button>
+
+            {/* Separador */}
+            <div className="flex items-center gap-2 my-1">
+              <span className="h-px flex-1 bg-gray-200" />
+              <span className="text-xs text-gray-500">o continúa con</span>
+              <span className="h-px flex-1 bg-gray-200" />
+            </div>
+
+            {/* Botón Google */}
+            <button
+              type="button"
+              disabled={loading}
+              onClick={onGoogleLogin}
+              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-gray-300 bg-white text-sm font-medium hover:bg-gray-50"
+            >
+              {/* puedes poner un simple círculo con G si no quieres iconos extra */}
+              <span className="w-5 h-5 grid place-items-center rounded-full bg-white border border-gray-300 text-xs">
+                G
+              </span>
+              <span>Continuar con Google</span>
             </button>
 
             <div className="text-center text-sm text-gray-600">
               ¿No tienes cuenta?{" "}
-              <Link to="/auth/register" className="text-teal-600 hover:underline">Regístrate</Link>
+              <Link to="/auth/register" className="text-teal-600 hover:underline">
+                Regístrate
+              </Link>
             </div>
           </div>
         </form>

@@ -12,7 +12,7 @@ const Banner = () => {
             title: "Encuentra el Técnico Perfecto para Tu Hogar",
             subTitle: "Servicios de Confianza",
             description: "Conecta con profesionales verificados en tu ciudad. Reparaciones rápidas y confiables.",
-            image: "/src/assets/Banner/banner_image.png",
+            image: "/src/assets/Hero/hero_1.png",
             gradient: "from-emerald-600 via-teal-600 to-cyan-600",
             accent: "emerald"
         },
@@ -21,7 +21,7 @@ const Banner = () => {
             title: "Reparaciones Profesionales al Instante",
             subTitle: "Disponible 24/7",
             description: "Técnicos calificados listos para resolver cualquier problema en tu hogar.",
-            image: "/src/assets/Banner/banner_image.png",
+            image: "/src/assets/Hero/hero_2.png",
             gradient: "from-blue-600 via-indigo-600 to-purple-600",
             accent: "blue"
         },
@@ -30,7 +30,7 @@ const Banner = () => {
             title: "Calidad Garantizada en Cada Servicio",
             subTitle: "Satisfacción Total",
             description: "Miles de clientes satisfechos confían en nuestros técnicos especializados.",
-            image: "/src/assets/Banner/banner_image.png",
+            image: "/src/assets/Hero/hero_1.png",
             gradient: "from-orange-500 via-pink-500 to-red-500",
             accent: "orange"
         },
@@ -39,7 +39,7 @@ const Banner = () => {
             title: "Reserva en Minutos, Resuelve Hoy",
             subTitle: "Proceso Simplificado",
             description: "Sistema intuitivo para conectar con el técnico ideal según tus necesidades.",
-            image: "/src/assets/Banner/banner_image.png",
+            image: "/src/assets/Hero/hero_2.png",
             gradient: "from-violet-600 via-purple-600 to-indigo-600",
             accent: "violet"
         },

@@ -102,123 +102,144 @@ export default function FilterSidebar({
   };
 
   return (
-    <aside className="sticky top-20 bg-white/95 border rounded-2xl p-4 h-fit shadow-sm" aria-label="Barra de filtros">
-      {/* Header: título + limpiar (botón redondeado con icono) */}
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h4 className="text-lg font-semibold flex items-center gap-3">
-            <span className="inline-block px-2 py-1 rounded-md bg-emerald-100 text-emerald-700 text-sm">Filtros</span>
-            <span className="text-xs text-gray-500">Ajusta y filtra</span>
-          </h4>
-        </div>
+    <aside className="sticky top-20 bg-gradient-to-b from-white via-emerald-50/30 to-white rounded-3xl p-6 h-fit shadow-lg border-2 border-emerald-100/50 backdrop-blur-sm" aria-label="Barra de filtros">
+      {/* Header con estilo mejorado */}
+      <div className="mb-6">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl flex items-center justify-center shadow-lg">
+              <Filter className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h4 className="text-lg font-bold text-gray-900" style={{fontFamily: 'Space Grotesk, sans-serif', letterSpacing: '0px'}}>
+                Filtros
+              </h4>
+              <p className="text-xs text-gray-500 font-medium" style={{fontFamily: 'DM Sans, sans-serif'}}>Encuentra lo perfecto</p>
+            </div>
+          </div>
 
-        <button
-          type="button"
-          onClick={limpiar}
-          className="inline-flex items-center gap-2 text-sm px-3 py-1 rounded-full bg-white border border-gray-200 shadow-sm hover:shadow-md transition disabled:opacity-50"
-          aria-label="Limpiar filtros"
+          <button
+            type="button"
+            onClick={limpiar}
+            className="p-2 rounded-full bg-white hover:bg-red-50 border-2 border-gray-200 hover:border-red-300 transition-all duration-200 shadow-sm hover:shadow-md"
+            aria-label="Limpiar filtros"
+            disabled={!!loading}
+            title="Limpiar todos los filtros"
+          >
+            <X className="w-5 h-5 text-gray-600 hover:text-red-600" />
+          </button>
+        </div>
+        <div className="h-1 bg-gradient-to-r from-emerald-500 via-teal-500 to-transparent rounded-full"></div>
+      </div>
+
+      {/* Búsqueda mejorada */}
+      <div className="mb-5">
+        <label className="text-xs font-bold text-gray-600 uppercase tracking-wide mb-2 block" htmlFor="f-q" style={{fontFamily: 'DM Sans, sans-serif', letterSpacing: '0.05em'}}>Buscar</label>
+        <input
+          id="f-q"
+          type="text"
+          value={draft.q}
+          onChange={(e) => onDraftChange({ q: e.target.value })}
+          onKeyDown={onSearchKeyDown}
+          placeholder="Nombre, especialidad…"
+          className="w-full disabled:opacity-50"
+          autoComplete="off"
+          aria-label="Buscar por texto"
+          disabled={!!loading}
+        />
+      </div>
+
+      {/* Especialidad mejorada */}
+      <div className="mb-5">
+        <label className="text-xs font-bold text-gray-600 uppercase tracking-wide mb-2 block" htmlFor="f-esp" style={{fontFamily: 'DM Sans, sans-serif', letterSpacing: '0.05em'}}>Especialidad</label>
+        <select
+          id="f-esp"
+          className="w-full"
+          value={draft.especialidad ?? ""}
+          onChange={(e) => onDraftChange({ especialidad: e.target.value || null })}
           disabled={!!loading}
         >
-          <X className="w-4 h-4 text-gray-600" />
-          <span>Limpiar</span>
-        </button>
+          <option value="">Todas las especialidades</option>
+          {especialidadesUnicas.map(({ label, c }) => (
+            <option key={label} value={label}>{label} {c ? `(${c})` : ""}</option>
+          ))}
+        </select>
       </div>
 
-      {/* Búsqueda */}
-      <label className="text-sm font-medium" htmlFor="f-q">Buscar</label>
-      <input
-        id="f-q"
-        type="text"
-        value={draft.q}
-        onChange={(e) => onDraftChange({ q: e.target.value })}
-        onKeyDown={onSearchKeyDown}
-        placeholder="Nombre, palabras clave…"
-        className="w-full border rounded-lg px-3 py-2 mb-3 disabled:opacity-50"
-        autoComplete="off"
-        aria-label="Buscar por texto"
-        disabled={!!loading}
-      />
-
-      {/* Especialidad */}
-      <label className="text-sm font-medium" htmlFor="f-esp">Especialidad</label>
-      <select
-        id="f-esp"
-        className="w-full border rounded-lg px-3 py-2 mb-3 disabled:opacity-50"
-        value={draft.especialidad ?? ""}
-        onChange={(e) => onDraftChange({ especialidad: e.target.value || null })}
-        disabled={!!loading}
-      >
-        <option value="">Todas</option>
-        {especialidadesUnicas.map(({ label, c }) => (
-          <option key={label} value={label}>{label} {c ? `(${c})` : ""}</option>
-        ))}
-      </select>
-
-      {/* Ciudad */}
-      <label className="text-sm font-medium" htmlFor="f-ciudad">Ciudad</label>
-      <select
-        id="f-ciudad"
-        className="w-full border rounded-lg px-3 py-2 mb-3 disabled:opacity-50"
-        value={draft.ciudad ?? ""}
-        onChange={(e) => onDraftChange({ ciudad: e.target.value || null })}
-        disabled={!!loading}
-      >
-        <option value="">Todas</option>
-        {ciudadesUnicas.map(({ label, c }) => (
-          <option key={label} value={label}>{label} {c ? `(${c})` : ""}</option>
-        ))}
-      </select>
-
-      {/* Rating mínimo */}
-      <label className="text-sm font-medium" htmlFor="f-rating">Rating mínimo</label>
-      <select
-        id="f-rating"
-        className="w-full border rounded-lg px-3 py-2 mb-3 disabled:opacity-50"
-        value={Number(draft.minRating) || 0}
-        onChange={(e) => onDraftChange({ minRating: Number(e.target.value) })}
-        disabled={!!loading}
-      >
-        {[0, 3, 4, 4.5].map((r) => (
-          <option key={r} value={r}>{r === 0 ? "Todos" : `${r}+ estrellas`}</option>
-        ))}
-      </select>
-
-      {/* Solo disponibles */}
-      <div className="mb-3 flex items-center justify-between">
-        <label htmlFor="f-disponible" className="text-sm font-medium">Solo disponibles</label>
-        <input
-          id="f-disponible"
-          type="checkbox"
-          checked={!!draft.disponibleSolo}
-          onChange={(e) => onDraftChange({ disponibleSolo: e.target.checked })}
-          className="toggle"
-          aria-label="Mostrar solo técnicos disponibles"
+      {/* Ciudad mejorada */}
+      <div className="mb-5">
+        <label className="text-xs font-bold text-gray-600 uppercase tracking-wide mb-2 block" htmlFor="f-ciudad" style={{fontFamily: 'DM Sans, sans-serif', letterSpacing: '0.05em'}}>Ciudad</label>
+        <select
+          id="f-ciudad"
+          className="w-full"
+          value={draft.ciudad ?? ""}
+          onChange={(e) => onDraftChange({ ciudad: e.target.value || null })}
           disabled={!!loading}
-        />
+        >
+          <option value="">Todas las ciudades</option>
+          {ciudadesUnicas.map(({ label, c }) => (
+            <option key={label} value={label}>{label} {c ? `(${c})` : ""}</option>
+          ))}
+        </select>
       </div>
 
-      {/* Solo 5.0 */}
-      <div className="mb-4 flex items-center justify-between">
-        <label htmlFor="f-perfect" className="text-sm font-medium">Solo 5.0</label>
-        <input
-          id="f-perfect"
-          type="checkbox"
-          checked={!!draft.perfectRating}
-          onChange={(e) => onDraftChange({ perfectRating: e.target.checked })}
-          className="checkbox"
-          aria-label="Mostrar solo técnicos con calificación 5.0"
+      {/* Rating mínimo mejorado */}
+      <div className="mb-5">
+        <label className="text-xs font-bold text-gray-600 uppercase tracking-wide mb-2 block" htmlFor="f-rating" style={{fontFamily: 'DM Sans, sans-serif', letterSpacing: '0.05em'}}>Calificación mínima</label>
+        <select
+          id="f-rating"
+          className="w-full"
+          value={Number(draft.minRating) || 0}
+          onChange={(e) => onDraftChange({ minRating: Number(e.target.value) })}
           disabled={!!loading}
-        />
+        >
+          {[0, 3, 4, 4.5].map((r) => (
+            <option key={r} value={r}>{r === 0 ? "Todos" : `${r}+ ⭐ estrellas`}</option>
+          ))}
+        </select>
       </div>
 
-      {/* Rango de precios */}
+      {/* Checkboxes mejorados */}
+      <div className="mb-5 space-y-3">
+        <div className="flex items-center justify-between p-4 bg-gradient-to-r from-emerald-50 to-teal-50 rounded-xl border-2 border-emerald-200/50 hover:border-emerald-300 transition-all group cursor-pointer">
+          <label htmlFor="f-disponible" className="text-sm font-semibold text-gray-700 cursor-pointer flex-1" style={{fontFamily: 'DM Sans, sans-serif'}}>
+            Solo disponibles
+          </label>
+          <input
+            id="f-disponible"
+            type="checkbox"
+            checked={!!draft.disponibleSolo}
+            onChange={(e) => onDraftChange({ disponibleSolo: e.target.checked })}
+            className="w-5 h-5 rounded-lg border-2 border-emerald-500 accent-emerald-600 cursor-pointer"
+            aria-label="Mostrar solo técnicos disponibles"
+            disabled={!!loading}
+          />
+        </div>
+
+        <div className="flex items-center justify-between p-4 bg-gradient-to-r from-yellow-50 to-orange-50 rounded-xl border-2 border-yellow-200/50 hover:border-yellow-300 transition-all group cursor-pointer">
+          <label htmlFor="f-perfect" className="text-sm font-semibold text-gray-700 cursor-pointer flex-1" style={{fontFamily: 'DM Sans, sans-serif'}}>
+            Solo 5.0 ⭐
+          </label>
+          <input
+            id="f-perfect"
+            type="checkbox"
+            checked={!!draft.perfectRating}
+            onChange={(e) => onDraftChange({ perfectRating: e.target.checked })}
+            className="w-5 h-5 rounded-lg border-2 border-yellow-500 accent-yellow-600 cursor-pointer"
+            aria-label="Mostrar solo técnicos con calificación 5.0"
+            disabled={!!loading}
+          />
+        </div>
+      </div>
+
+      {/* Rango de precios mejorado */}
       {hayTarifa && (
-        <div className="mb-4">
-          <label className="text-sm font-medium mb-1 block">Rango de precios</label>
+        <div className="mb-6 p-4 bg-white border-2 border-gray-200 rounded-2xl">
+          <label className="text-xs font-bold text-gray-600 uppercase tracking-wide mb-3 block" style={{fontFamily: 'DM Sans, sans-serif', letterSpacing: '0.05em'}}>Rango de precios</label>
 
           {/* sliders */}
-          <div className="flex flex-col gap-2">
-            <div className="flex justify-between text-xs text-gray-600">
+          <div className="flex flex-col gap-3">
+            <div className="flex justify-between text-sm font-bold text-emerald-700" style={{fontFamily: 'DM Sans, sans-serif'}}>
               <span>{money(priceRange.min)}</span>
               <span>{money(priceRange.max)}</span>
             </div>
@@ -228,7 +249,7 @@ export default function FilterSidebar({
               max={precios.max}
               value={priceRange.min}
               onChange={(e) => handlePriceChange("min", e.target.value)}
-              className="w-full"
+              className="w-full h-2 bg-gray-200 rounded-full appearance-none cursor-pointer accent-emerald-500"
               disabled={precios.min === precios.max || !!loading}
               aria-label="Precio mínimo"
             />
@@ -238,73 +259,80 @@ export default function FilterSidebar({
               max={precios.max}
               value={priceRange.max}
               onChange={(e) => handlePriceChange("max", e.target.value)}
-              className="w-full"
+              className="w-full h-2 bg-gray-200 rounded-full appearance-none cursor-pointer accent-emerald-500"
               disabled={precios.min === precios.max || !!loading}
               aria-label="Precio máximo"
             />
           </div>
 
           {/* inputs numéricos vinculados */}
-          <div className="mt-2 grid grid-cols-2 gap-2">
+          <div className="mt-3 grid grid-cols-2 gap-2">
             <input
               type="number"
-              className="border rounded-lg px-2 py-1 disabled:opacity-50"
+              className="border-2 border-gray-200 focus:border-emerald-500 focus:ring-0 rounded-lg px-3 py-2 text-sm font-semibold disabled:opacity-50 bg-gray-50"
               value={priceRange.min}
               min={precios.min}
               max={precios.max}
               onChange={(e) => handlePriceChange("min", e.target.value)}
               aria-label="Ingresar precio mínimo"
               disabled={!!loading}
+              style={{fontFamily: 'DM Sans, sans-serif'}}
             />
             <input
               type="number"
-              className="border rounded-lg px-2 py-1 disabled:opacity-50"
+              className="border-2 border-gray-200 focus:border-emerald-500 focus:ring-0 rounded-lg px-3 py-2 text-sm font-semibold disabled:opacity-50 bg-gray-50"
               value={priceRange.max}
               min={precios.min}
               max={precios.max}
               onChange={(e) => handlePriceChange("max", e.target.value)}
               aria-label="Ingresar precio máximo"
               disabled={!!loading}
+              style={{fontFamily: 'DM Sans, sans-serif'}}
             />
           </div>
-
-          <p className="text-xs text-gray-500 mt-1">
-            {money(priceRange.min)} – {money(priceRange.max)}
-          </p>
         </div>
       )}
 
-      {/* Ordenar por */}
-      <label className="text-sm font-medium" htmlFor="f-orden">Ordenar por</label>
-      <select
-        id="f-orden"
-        className="w-full border rounded-lg px-3 py-2 mb-4 disabled:opacity-50"
-        value={draft.orden}
-        onChange={(e) => onDraftChange({ orden: e.target.value })}
-        disabled={!!loading}
-      >
-        <option value="rating">Mejor calificados</option>
-        {showPriceSort && (
-          <>
-            <option value="precio_asc">Menor precio</option>
-            <option value="precio_desc">Mayor precio</option>
-          </>
-        )}
-      </select>
+      {/* Ordenar por mejorado */}
+      <div className="mb-5">
+        <label className="text-xs font-bold text-gray-600 uppercase tracking-wide mb-2 block" htmlFor="f-orden" style={{fontFamily: 'DM Sans, sans-serif', letterSpacing: '0.05em'}}>Ordenar resultados</label>
+        <select
+          id="f-orden"
+          className="w-full"
+          value={draft.orden}
+          onChange={(e) => onDraftChange({ orden: e.target.value })}
+          disabled={!!loading}
+        >
+          <option value="rating">⭐ Mejor calificados</option>
+          {showPriceSort && (
+            <>
+              <option value="precio_asc">💰 Menor precio</option>
+              <option value="precio_desc">💰 Mayor precio</option>
+            </>
+          )}
+        </select>
+      </div>
 
+      {/* Botón aplicar mejorado */}
       <button
         type="button"
-        className="w-full rounded-xl py-2 flex items-center justify-center gap-2 bg-gradient-to-r from-teal-600 to-emerald-400 text-white font-medium shadow-md hover:from-teal-700 transition disabled:opacity-50"
+        className="w-full rounded-2xl py-3 px-4 flex items-center justify-center gap-3 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold shadow-lg hover:shadow-xl hover:from-emerald-700 hover:to-teal-700 transition-all duration-200 disabled:opacity-50 text-base"
         onClick={onApply}
         aria-label="Aplicar filtros"
         disabled={!!loading}
+        style={{fontFamily: 'DM Sans, sans-serif'}}
       >
         {loading ? (
-          <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-white" aria-hidden="true" />
+          <>
+            <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-white" aria-hidden="true" />
+            <span>Aplicando filtros...</span>
+          </>
         ) : (
-          <Filter className="w-4 h-4 text-white" />
+          <>
+            <Filter className="w-5 h-5" />
+            <span>Aplicar filtros</span>
+          </>
         )}
-        <span>Aplicar filtros</span>
       </button>
     </aside>
   );

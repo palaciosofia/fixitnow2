@@ -1,5 +1,6 @@
 // src/Pages/Cliente/MisReservas.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { db } from "../../firebase";
 import {
   collection, query, where, orderBy, onSnapshot,
@@ -7,7 +8,9 @@ import {
 } from "firebase/firestore";
 import dayjs from "dayjs";
 import { useAuth } from "../../context/AuthProvider";
-import { Clock, User, Phone, XCircle } from "lucide-react";
+import { Clock, User, Phone, XCircle, CreditCard, CheckCircle, MessageSquare } from "lucide-react";
+import { getPaymentByBookingId } from "../../services/payments";
+import PaymentModal from "../../Components/PaymentModal";
 
 // ---- Helpers de fecha/agrupación (con scheduledAt: Timestamp) ----
 function keyFromTs(ts) {
@@ -45,10 +48,13 @@ function isPastTs(ts) {
 export default function MisReservas() {
   const { user } = useAuth();
   const uid = user?.uid;
+  const nav = useNavigate();
 
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+  const [selectedPayment, setSelectedPayment] = useState(null);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
 
   // cache tid -> nombre técnico
   const [techNames, setTechNames] = useState({});
@@ -117,6 +123,24 @@ export default function MisReservas() {
   if (loading) return <p className="p-6">Cargando tus reservas…</p>;
   if (err) return <p className="p-6 text-red-600">{err}</p>;
 
+  const handlePaymentClick = async (booking) => {
+    try {
+      console.log("🔍 Buscando pago para booking ID:", booking.id);
+      const payment = await getPaymentByBookingId(booking.id);
+      console.log("💰 Pago encontrado:", payment);
+      if (payment) {
+        setSelectedPayment(payment);
+        setShowPaymentModal(true);
+      } else {
+        console.warn("⚠️ No se encontró pago para esta reserva. ID:", booking.id);
+        alert("No se encontró el registro de pago. Por favor intenta más tarde.");
+      }
+    } catch (error) {
+      console.error("❌ Error obteniendo pago:", error);
+      alert("Error al cargar el pago: " + error.message);
+    }
+  };
+
   return (
     <div className="max-w-4xl mx-auto p-4">
       <header className="mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -138,10 +162,26 @@ export default function MisReservas() {
       </header>
 
       {/* Próximas */}
-      <Section title="Próximas" groups={gUpcoming} techNames={techNames} emptyText="No tienes reservas próximas." />
+      <Section title="Próximas" groups={gUpcoming} techNames={techNames} emptyText="No tienes reservas próximas." onPaymentClick={handlePaymentClick} />
 
       {/* Historial */}
-      <Section title="Historial" groups={gPast} techNames={techNames} emptyText="Aún no tienes historial." />
+      <Section title="Historial" groups={gPast} techNames={techNames} emptyText="Aún no tienes historial." onPaymentClick={handlePaymentClick} />
+
+      {/* Payment Modal */}
+      {selectedPayment && (
+        <PaymentModal
+          isOpen={showPaymentModal}
+          onClose={() => {
+            setShowPaymentModal(false);
+            setSelectedPayment(null);
+          }}
+          payment={selectedPayment}
+          onPaymentSuccess={() => {
+            // Refresh reservas
+            setItems([]);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -159,7 +199,7 @@ function phoneDigits(raw = "") {
   return String(raw || "").replace(/\D/g, "");
 }
 
-function Section({ title, groups, techNames, emptyText }) {
+function Section({ title, groups, techNames, emptyText, onPaymentClick }) {
   return (
     <section className="mb-8">
       <h2 className="text-xl font-semibold mb-3">{title}</h2>
@@ -177,6 +217,7 @@ function Section({ title, groups, techNames, emptyText }) {
               const shortTime = dayjs(r.scheduledAt?.toDate?.()).format("HH:mm");
               const status = humanStatus(r.status);
               const phone = phoneDigits(r.technicianPhone || r.technicianTelefono || "");
+              const isPending = r.paymentStatus === "pending";
 
               return (
                 <li key={r.id} className="bg-white rounded-lg border p-4 flex items-start gap-4 shadow-sm hover:shadow-md transition">
@@ -188,7 +229,7 @@ function Section({ title, groups, techNames, emptyText }) {
                     <div className="mt-2 text-xs text-gray-500">{shortTime}</div>
                   </div>
 
-                  {/* detalles */}
+                    {/* detalles */}
                   <div className="flex-1">
                     <div className="flex items-start justify-between gap-4">
                       <div>
@@ -196,17 +237,35 @@ function Section({ title, groups, techNames, emptyText }) {
                         <div className="text-sm text-gray-500 mt-1">{whenStr}</div>
                       </div>
 
-                      <div className="ml-4">
+                      <div className="ml-4 flex flex-col gap-2">
                         <StatusBadge status={status.badge} />
+                        <PaymentBadge paymentStatus={r.paymentStatus} />
                       </div>
                     </div>
-
                     {r.description && <div className="text-sm text-gray-600 mt-3">Nota: {r.description}</div>}
                     {r.address && <div className="text-xs text-gray-400 mt-2">{r.address}</div>}
                   </div>
 
                   {/* acciones */}
                   <div className="flex flex-col items-end gap-2">
+                    {isPending && (
+                      <button
+                        onClick={() => onPaymentClick?.(r)}
+                        className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-yellow-50 text-yellow-700 border border-yellow-200 text-sm hover:bg-yellow-100 transition"
+                        title="Registrar pago"
+                      >
+                        <CreditCard className="w-4 h-4" /> Pagar
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => nav(`/chat/${r.technicianId}/${encodeURIComponent(techNames[r.technicianId] || 'Técnico')}`)}
+                      className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-sm hover:bg-blue-100 transition"
+                      title="Enviar mensaje"
+                    >
+                      <MessageSquare className="w-4 h-4" /> Mensaje
+                    </button>
+
                     {phone ? (
                       <a
                         href={`https://wa.me/${phone}`}
@@ -250,6 +309,23 @@ function StatusBadge({ status }) {
     pending: { cls: "bg-gray-100 text-gray-700", icon: "…", label: "Solicitada" },
   };
   const meta = map[status] || map.pending;
+  return (
+    <span className={`inline-flex items-center gap-2 text-xs uppercase tracking-wide px-2 py-1 rounded ${meta.cls}`}>
+      <span className="text-[11px] font-medium">{meta.icon}</span>
+      <span>{meta.label}</span>
+    </span>
+  );
+}
+
+// PaymentBadge - Muestra el estado de pago
+function PaymentBadge({ paymentStatus }) {
+  const map = {
+    pending: { cls: "bg-yellow-100 text-yellow-800", icon: "⏳", label: "Pago pendiente" },
+    paid: { cls: "bg-emerald-100 text-emerald-800", icon: "✓", label: "Pagado" },
+    failed: { cls: "bg-red-100 text-red-800", icon: "✕", label: "Pago fallido" },
+    refunded: { cls: "bg-blue-100 text-blue-800", icon: "↶", label: "Reembolsado" },
+  };
+  const meta = map[paymentStatus] || map.pending;
   return (
     <span className={`inline-flex items-center gap-2 text-xs uppercase tracking-wide px-2 py-1 rounded ${meta.cls}`}>
       <span className="text-[11px] font-medium">{meta.icon}</span>

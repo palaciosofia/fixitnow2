@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 
 // Secciones comunes (capa base)
-import Hero, { HeroBenefits } from "../../Components/Common/Hero";
+import Hero from "../../Components/Common/Hero";
 import HowItWorks from "../../Components/Common/HowItWorks";
 import Benefits from "../../Components/Common/Benefits";
 import ReviewsStrip from "../../Components/Common/ReviewsStrip";
@@ -105,12 +105,10 @@ export default function Home() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
       {/* HERO / Promesa y CTA */}
       <Hero />
-      
-      {/* BENEFICIOS HERO */}
-      <HeroBenefits />
+    
 
       {/* CATÁLOGO PREMIUM (ancla para navbar/hero) */}
-      <section id="catalogo" className="relative py-20 overflow-hidden">
+      <section id="catalogo" className="relative py-12 overflow-hidden">
         {/* Elementos decorativos de fondo */}
         <div className="absolute inset-0 overflow-hidden">
           <div className="absolute top-20 left-20 w-64 h-64 bg-emerald-200/20 rounded-full blur-3xl"></div>
@@ -139,8 +137,8 @@ export default function Home() {
                   <Users className="w-7 h-7 text-white" />
                 </div>
                 <div>
-                  <div className="text-2xl font-black text-gray-900">500+</div>
-                  <div className="text-sm text-gray-600">Técnicos Expertos</div>
+                  <div className="text-3xl font-black text-gray-900" style={{fontFamily: 'Space Grotesk, sans-serif'}}>500+</div>
+                  <div className="text-sm text-gray-600 font-medium">Técnicos Expertos</div>
                 </div>
               </div>
             </div>
@@ -151,8 +149,8 @@ export default function Home() {
                   <Star className="w-7 h-7 text-white" />
                 </div>
                 <div>
-                  <div className="text-2xl font-black text-gray-900">4.9/5</div>
-                  <div className="text-sm text-gray-600">Calificación</div>
+                  <div className="text-3xl font-black text-gray-900" style={{fontFamily: 'Space Grotesk, sans-serif'}}>4.9/5</div>
+                  <div className="text-sm text-gray-600 font-medium">Calificación</div>
                 </div>
               </div>
             </div>
@@ -163,8 +161,8 @@ export default function Home() {
                   <Zap className="w-7 h-7 text-white" />
                 </div>
                 <div>
-                  <div className="text-2xl font-black text-gray-900">24/7</div>
-                  <div className="text-sm text-gray-600">Disponibilidad</div>
+                  <div className="text-3xl font-black text-gray-900" style={{fontFamily: 'Space Grotesk, sans-serif'}}>24/7</div>
+                  <div className="text-sm text-gray-600 font-medium">Disponibilidad</div>
                 </div>
               </div>
             </div>
@@ -175,8 +173,8 @@ export default function Home() {
                   <Shield className="w-7 h-7 text-white" />
                 </div>
                 <div>
-                  <div className="text-2xl font-black text-gray-900">100%</div>
-                  <div className="text-sm text-gray-600">Garantía</div>
+                  <div className="text-3xl font-black text-gray-900" style={{fontFamily: 'Space Grotesk, sans-serif'}}>100%</div>
+                  <div className="text-sm text-gray-600 font-medium">Garantía</div>
                 </div>
               </div>
             </div>
@@ -198,7 +196,7 @@ export default function Home() {
           ) : (
             <>
               {/* Grid mejorado con container */}
-              <div className="bg-white/60 backdrop-blur-sm rounded-3xl p-8 border border-white/20 shadow-2xl mb-12">
+              <div className="bg-white/60 backdrop-blur-sm rounded-3xl p-8 border border-white/20 shadow-2xl mb-6">
                 <CatalogGrid data={techs} loading={loadingTechs} />
               </div>
 
@@ -222,17 +220,17 @@ export default function Home() {
       </section>
 
       {/* CÓMO FUNCIONA con mejor spacing */}
-      <section className="py-20">
+      <section className="py-12">
         <HowItWorks />
       </section>
 
       {/* BENEFICIOS con mejor spacing */}
-      <section className="py-20">
+      <section className="py-12">
         <Benefits />
       </section>
 
       {/* RESEÑAS con mejor spacing */}
-      <section className="py-20">
+      <section className="py-12">
         <ReviewsStrip data={reviews} loading={loadingReviews} />
       </section>
     </div>
