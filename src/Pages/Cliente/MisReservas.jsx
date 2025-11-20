@@ -60,22 +60,6 @@ export default function MisReservas() {
   const [techNames, setTechNames] = useState({});
   const loadingTidsRef = useRef(new Set());
 
-  // Helper para navegar a chat
-  const goToChat = (technicianId, technicianName) => {
-    if (!technicianId) {
-      console.warn('⚠️ No hay technicianId');
-      return;
-    }
-    try {
-      const encodedName = encodeURIComponent(technicianName || 'Técnico');
-      const path = `/chat/${technicianId}/${encodedName}`;
-      console.log('🔗 Navegando a:', path);
-      navigate(path);
-    } catch (error) {
-      console.error('❌ Error navegando:', error);
-    }
-  };
-
   useEffect(() => {
     if (!uid) return;
 
@@ -275,7 +259,10 @@ function Section({ title, groups, techNames, emptyText, onPaymentClick }) {
                     )}
 
                     <button
-                      onClick={() => goToChat(r.technicianId, techNames[r.technicianId])}
+                      onClick={() => {
+                        const techName = techNames[r.technicianId] || 'Técnico';
+                        navigate(`/chat/${r.technicianId}/${encodeURIComponent(techName)}`);
+                      }}
                       className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-sm hover:bg-blue-100 transition"
                       title="Enviar mensaje"
                     >
