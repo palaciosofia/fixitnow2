@@ -259,7 +259,18 @@ function Section({ title, groups, techNames, emptyText, onPaymentClick }) {
                     )}
 
                     <button
-                      onClick={() => nav(`/chat/${r.technicianId}/${encodeURIComponent(techNames[r.technicianId] || 'Técnico')}`)}
+                      onClick={() => {
+                        if (r.technicianId) {
+                          const techName = techNames[r.technicianId] || 'Técnico';
+                          console.log("🔗 Navegando a chat:", {
+                            techId: r.technicianId,
+                            techName: techName,
+                          });
+                          nav(`/chat/${r.technicianId}/${encodeURIComponent(techName)}`);
+                        } else {
+                          console.warn('⚠️ No hay technicianId en la reserva');
+                        }
+                      }}
                       className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-sm hover:bg-blue-100 transition"
                       title="Enviar mensaje"
                     >

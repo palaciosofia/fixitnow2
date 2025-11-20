@@ -27,6 +27,11 @@ export default function Chat() {
   const [error, setError] = useState("");
   const messagesEndRef = useRef(null);
 
+  // Debug: verificar parámetros
+  useEffect(() => {
+    console.log("📱 Chat params:", { otherUserId, otherUserName });
+  }, [otherUserId, otherUserName]);
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -37,9 +42,14 @@ export default function Chat() {
 
   // Suscribirse a los mensajes de la conversación
   useEffect(() => {
-    if (!user?.uid || !otherUserId) return;
+    if (!user?.uid || !otherUserId) {
+      console.warn("⚠️ Falta user?.uid o otherUserId", { userUid: user?.uid, otherUserId });
+      return;
+    }
 
+    console.log("✅ Suscribiendo a conversación", { userId: user.uid, otherUserId });
     const unsubscribe = subscribeToConversation(user.uid, otherUserId, (msgs) => {
+      console.log("📨 Mensajes recibidos:", msgs.length);
       setMessages(msgs);
     });
 
@@ -61,6 +71,13 @@ export default function Chat() {
     setError("");
 
     try {
+      console.log("📤 Enviando mensaje:", {
+        senderId: user.uid,
+        senderName: user.displayName || "Usuario",
+        receiverId: otherUserId,
+        text: inputText.substring(0, 50),
+      });
+
       await sendMessage({
         senderId: user.uid,
         senderName: user.displayName || "Usuario",
@@ -69,8 +86,10 @@ export default function Chat() {
         text: inputText,
       });
 
+      console.log("✅ Mensaje enviado correctamente");
       setInputText("");
     } catch (err) {
+      console.error("❌ Error enviando mensaje:", err);
       setError(err.message);
     } finally {
       setLoading(false);
