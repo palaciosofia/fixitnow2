@@ -1,6 +1,6 @@
 // src/Pages/Cliente/MisReservas.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { db } from "../../firebase";
 import {
   collection, query, where, orderBy, onSnapshot,
@@ -48,7 +48,6 @@ function isPastTs(ts) {
 export default function MisReservas() {
   const { user } = useAuth();
   const uid = user?.uid;
-  const navigate = useNavigate();
 
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -258,16 +257,13 @@ function Section({ title, groups, techNames, emptyText, onPaymentClick }) {
                       </button>
                     )}
 
-                    <button
-                      onClick={() => {
-                        const techName = techNames[r.technicianId] || 'Técnico';
-                        navigate(`/chat/${r.technicianId}/${encodeURIComponent(techName)}`);
-                      }}
+                    <Link
+                      to={`/chat/${r.technicianId}/${encodeURIComponent(techNames[r.technicianId] || 'Técnico')}`}
                       className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-sm hover:bg-blue-100 transition"
                       title="Enviar mensaje"
                     >
                       <MessageSquare className="w-4 h-4" /> Mensaje
-                    </button>
+                    </Link>
 
                     {phone ? (
                       <a
