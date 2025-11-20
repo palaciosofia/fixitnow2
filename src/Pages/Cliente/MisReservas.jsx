@@ -48,7 +48,7 @@ function isPastTs(ts) {
 export default function MisReservas() {
   const { user } = useAuth();
   const uid = user?.uid;
-  const nav = useNavigate();
+  const navigate = useNavigate();
 
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -59,6 +59,22 @@ export default function MisReservas() {
   // cache tid -> nombre técnico
   const [techNames, setTechNames] = useState({});
   const loadingTidsRef = useRef(new Set());
+
+  // Helper para navegar a chat
+  const goToChat = (technicianId, technicianName) => {
+    if (!technicianId) {
+      console.warn('⚠️ No hay technicianId');
+      return;
+    }
+    try {
+      const encodedName = encodeURIComponent(technicianName || 'Técnico');
+      const path = `/chat/${technicianId}/${encodedName}`;
+      console.log('🔗 Navegando a:', path);
+      navigate(path);
+    } catch (error) {
+      console.error('❌ Error navegando:', error);
+    }
+  };
 
   useEffect(() => {
     if (!uid) return;
@@ -259,18 +275,7 @@ function Section({ title, groups, techNames, emptyText, onPaymentClick }) {
                     )}
 
                     <button
-                      onClick={() => {
-                        if (r.technicianId) {
-                          const techName = techNames[r.technicianId] || 'Técnico';
-                          console.log("🔗 Navegando a chat:", {
-                            techId: r.technicianId,
-                            techName: techName,
-                          });
-                          nav(`/chat/${r.technicianId}/${encodeURIComponent(techName)}`);
-                        } else {
-                          console.warn('⚠️ No hay technicianId en la reserva');
-                        }
-                      }}
+                      onClick={() => goToChat(r.technicianId, techNames[r.technicianId])}
                       className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-sm hover:bg-blue-100 transition"
                       title="Enviar mensaje"
                     >
