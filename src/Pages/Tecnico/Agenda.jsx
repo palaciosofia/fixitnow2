@@ -28,6 +28,7 @@ import {
   Star,
   Sparkles,
 } from "lucide-react";
+import CalendarioReservas from "../../Components/CalendarioReservas/CalendarioReservas";
 
 /* ---------- Helpers con scheduledAt: Timestamp ---------- */
 function keyFromTs(ts) {
@@ -117,21 +118,38 @@ export default function Agenda() {
 
   async function loadClientName(userId) {
     try {
+      // Si ya está cargando, no lo vuelvas a cargar
+      if (loadingUidsRef.current.has(userId)) return;
       loadingUidsRef.current.add(userId);
+      
       const snap = await getDoc(doc(db, "users", userId));
       let label = userId;
       if (snap.exists()) {
         const d = snap.data();
-        // en tus docs de users vi "name" y "email"
+        // Intenta varios campos donde podría estar el nombre
         label = d?.name || d?.nombre || d?.displayName || d?.email || userId;
       }
       setClientNames((prev) => ({ ...prev, [userId]: label }));
-    } catch {
+    } catch (error) {
+      // Silenciar errores de permisos y simplemente usar el fallback
       setClientNames((prev) => ({ ...prev, [userId]: userId }));
     } finally {
       loadingUidsRef.current.delete(userId);
     }
   }
+
+  // Precargar nombres cuando rows cambia
+  useEffect(() => {
+    const missingIds = rows
+      .map((r) => r.clientId)
+      .filter(Boolean)
+      .filter((id) => !clientNames[id] && !loadingUidsRef.current.has(id));
+    
+    if (missingIds.length > 0) {
+      // Cargar en paralelo (máx 5 simultáneamente para no saturar)
+      missingIds.slice(0, 5).forEach(loadClientName);
+    }
+  }, [rows, clientNames]);
 
   // Particiones por tiempo/estado
   const upcoming = useMemo(
@@ -296,6 +314,10 @@ export default function Agenda() {
         </div>
 
         {/* Próximas */}
+        {/* Calendario */}
+        <CalendarioReservas reservas={rows} />
+
+        {/* Próximas Citas */}
         <SectionTech
           title="Próximas Citas"
           subtitle="Reservas confirmadas y pendientes"

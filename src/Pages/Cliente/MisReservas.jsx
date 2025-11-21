@@ -11,6 +11,7 @@ import { useAuth } from "../../context/AuthProvider";
 import { Clock, User, Phone, XCircle, CreditCard, CheckCircle, MessageSquare } from "lucide-react";
 import { getPaymentByBookingId } from "../../services/payments";
 import PaymentModal from "../../Components/PaymentModal";
+import CalendarioReservas from "../../Components/CalendarioReservas/CalendarioReservas";
 
 // ---- Helpers de fecha/agrupación (con scheduledAt: Timestamp) ----
 function keyFromTs(ts) {
@@ -159,6 +160,9 @@ export default function MisReservas() {
           </div>
         </div>
       </header>
+
+      {/* Calendario */}
+      <CalendarioReservas reservas={items} />
 
       {/* Próximas */}
       <Section title="Próximas" groups={gUpcoming} techNames={techNames} emptyText="No tienes reservas próximas." onPaymentClick={handlePaymentClick} />
