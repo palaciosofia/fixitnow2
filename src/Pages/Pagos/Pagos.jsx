@@ -1,9 +1,7 @@
 // src/Pages/Pagos/Pagos.jsx
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "../../context/AuthProvider";
 import { motion } from "framer-motion";
-import { db } from "../../firebase";
-import { collection, query, where, orderBy, onSnapshot } from "firebase/firestore";
 import {
   CreditCard,
   DollarSign,
@@ -14,22 +12,18 @@ import {
 } from "lucide-react";
 import {
   subscribeClientPayments,
-  getClientPaymentsSummary,
+  summarizeClientPayments,
   formatAmount,
 } from "../../services/payments";
+import { paymentStatusMeta } from "../../utils/paymentStatus";
 import PaymentModal from "../../Components/PaymentModal";
 import dayjs from "dayjs";
 
 export default function Pagos() {
   const { user, isCliente } = useAuth();
   const [payments, setPayments] = useState([]);
-  const [summary, setSummary] = useState({
-    total: 0,
-    paid: 0,
-    pending: 0,
-    failed: 0,
-  });
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [selectedPayment, setSelectedPayment] = useState(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
 
@@ -41,26 +35,21 @@ export default function Pagos() {
     }
 
     setLoading(true);
-    console.log("🔄 Suscribiendo a pagos para cliente:", user.uid);
-    
-    try {
-      const unsub = subscribeClientPayments(user.uid, async (data) => {
-        console.log("✅ Pagos recibidos:", data);
+    const unsub = subscribeClientPayments(
+      user.uid,
+      (data) => {
         setPayments(data);
-
-        // Obtener resumen
-        const sum = await getClientPaymentsSummary(user.uid);
-        console.log("📊 Resumen:", sum);
-        setSummary(sum);
         setLoading(false);
-      });
-
-      return unsub;
-    } catch (error) {
-      console.error("❌ Error suscribiendo a pagos:", error);
-      setLoading(false);
-    }
+      },
+      () => {
+        setLoadError("No pudimos cargar tus pagos. Intenta de nuevo más tarde.");
+        setLoading(false);
+      }
+    );
+    return unsub;
   }, [user?.uid, isCliente]);
+
+  const summary = useMemo(() => summarizeClientPayments(payments), [payments]);
 
   if (!user) return <p className="p-6">Debes iniciar sesión.</p>;
   if (!isCliente) return <p className="p-6">Esta sección es solo para clientes.</p>;
@@ -90,7 +79,7 @@ export default function Pagos() {
               >
                 Mis Pagos
               </h1>
-              <p className="text-gray-600 mt-2">Gestiona tus pagos pendientes</p>
+              <p className="text-gray-600 mt-2">Reporta y revisa los pagos de tus reservas</p>
             </div>
           </div>
         </motion.div>
@@ -99,13 +88,16 @@ export default function Pagos() {
           <div className="text-center py-12">
             <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600"></div>
             <p className="mt-4 text-gray-600">Cargando pagos...</p>
-            <p className="text-xs text-gray-500 mt-2">Console para ver errores</p>
+          </div>
+        ) : loadError ? (
+          <div className="text-center py-12 bg-white rounded-3xl border-2 border-red-100 text-red-700">
+            {loadError}
           </div>
         ) : payments.length === 0 ? (
           <div className="text-center py-12 bg-white rounded-3xl border-2 border-gray-100">
             <CreditCard className="w-12 h-12 text-gray-300 mx-auto mb-4" />
             <p className="text-gray-600 text-lg">No tienes pagos registrados.</p>
-            <p className="text-sm text-gray-500 mt-2">Cuando hagas una reserva y el técnico la confirme, aparecerá aquí.</p>
+            <p className="text-sm text-gray-500 mt-2">Cuando hagas una reserva, su pago aparecerá aquí.</p>
           </div>
         ) : (
           <>
@@ -113,7 +105,7 @@ export default function Pagos() {
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
               {[
                 {
-                  label: "Total Adeudado",
+                  label: "Total",
                   value: formatAmount(summary.total),
                   color: "from-blue-500 to-cyan-500",
                   icon: DollarSign,
@@ -190,37 +182,7 @@ export default function Pagos() {
               ) : (
                 <div className="divide-y divide-gray-100">
                   {payments.map((payment, i) => {
-                    const statusMap = {
-                      pending: {
-                        color: "yellow",
-                        label: "Pendiente",
-                        icon: "⏳",
-                        bg: "bg-yellow-50",
-                        border: "border-yellow-200",
-                      },
-                      paid: {
-                        color: "emerald",
-                        label: "Pagado",
-                        icon: "✓",
-                        bg: "bg-emerald-50",
-                        border: "border-emerald-200",
-                      },
-                      failed: {
-                        color: "red",
-                        label: "Fallido",
-                        icon: "✕",
-                        bg: "bg-red-50",
-                        border: "border-red-200",
-                      },
-                      refunded: {
-                        color: "blue",
-                        label: "Reembolsado",
-                        icon: "↶",
-                        bg: "bg-blue-50",
-                        border: "border-blue-200",
-                      },
-                    };
-                    const status = statusMap[payment.status] || statusMap.pending;
+                    const status = paymentStatusMeta(payment.status);
                     const canPay = payment.status === "pending";
 
                     return (
@@ -229,14 +191,16 @@ export default function Pagos() {
                         initial={{ opacity: 0 }}
                         whileInView={{ opacity: 1 }}
                         transition={{ delay: i * 0.05 }}
-                        className={`p-6 hover:${status.bg} transition-colors border-l-4 border-${status.color}-400`}
+                        className={`p-6 ${status.hover} transition-colors border-l-4 ${status.border}`}
                       >
                         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                           {/* Información */}
                           <div className="flex-1">
                             <div className="font-semibold text-gray-900 flex items-center gap-2">
                               <CreditCard className="w-4 h-4 text-gray-400" />
-                              Reserva #{payment.bookingId?.slice(0, 12)}
+                              {payment.technicianName
+                                ? `Servicio con ${payment.technicianName}`
+                                : `Reserva #${payment.bookingId?.slice(0, 12)}`}
                             </div>
                             <div className="text-sm text-gray-500 mt-2">
                               {dayjs(payment.createdAt?.toDate?.()).format(
@@ -244,8 +208,8 @@ export default function Pagos() {
                               )}
                             </div>
                             {payment.notes && (
-                              <div className="text-xs text-gray-600 mt-2 italic">
-                                "{payment.notes}"
+                              <div className="text-xs text-gray-600 mt-2 italic whitespace-pre-line">
+                                {payment.notes}
                               </div>
                             )}
                           </div>
@@ -263,9 +227,9 @@ export default function Pagos() {
                           {/* Status */}
                           <div className="flex items-center gap-3">
                             <span
-                              className={`bg-${status.color}-100 text-${status.color}-800 px-4 py-2 rounded-full text-xs font-bold flex items-center gap-2 whitespace-nowrap`}
+                              className={`${status.badge} px-4 py-2 rounded-full text-xs font-bold flex items-center gap-2 whitespace-nowrap`}
                             >
-                              {status.icon} {status.label}
+                              {status.icon} {status.short}
                             </span>
 
                             {/* Action Button */}
@@ -303,8 +267,8 @@ export default function Pagos() {
                   <div>
                     <h3 className="font-bold text-blue-900">Información importante</h3>
                     <p className="text-sm text-blue-700 mt-2">
-                      Los pagos se procesan de forma segura. Una vez confirmado el técnico tu
-                      cita, podrás proceder con el pago desde esta página.
+                      Cuando pagues, repórtalo desde aquí con el método que usaste. El pago
+                      queda "En revisión" hasta que el técnico confirme que lo recibió.
                     </p>
                   </div>
                 </div>
@@ -323,9 +287,7 @@ export default function Pagos() {
             setSelectedPayment(null);
           }}
           payment={selectedPayment}
-          onPaymentSuccess={() => {
-            // Los pagos se actualizan automáticamente via subscription
-          }}
+
         />
       )}
     </div>

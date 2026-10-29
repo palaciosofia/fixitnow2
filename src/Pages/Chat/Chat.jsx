@@ -30,11 +30,6 @@ export default function Chat() {
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
-  // Debug: verificar parámetros
-  useEffect(() => {
-    console.log("📱 Chat params:", { otherUserId, otherUserName });
-  }, [otherUserId, otherUserName]);
-
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -46,18 +41,18 @@ export default function Chat() {
   // Suscribirse a los mensajes de la conversación
   useEffect(() => {
     if (!user?.uid || !otherUserId) {
-      console.warn("⚠️ Falta user?.uid o otherUserId", { userUid: user?.uid, otherUserId });
       return;
     }
 
-    console.log("✅ Suscribiendo a conversación", { userId: user.uid, otherUserId });
     const unsubscribe = subscribeToConversation(user.uid, otherUserId, (msgs) => {
-      console.log("📨 Mensajes recibidos:", msgs.length);
       setMessages(msgs);
+      // Marca como leídos los mensajes que llegan mientras el chat está abierto
+      if (msgs.some((m) => m.receiverId === user.uid && !m.read)) {
+        markConversationAsRead(user.uid, otherUserId, user.uid).catch((err) =>
+          console.warn("No se pudieron marcar como leídos:", err?.message)
+        );
+      }
     });
-
-    // Marcar como leído
-    markConversationAsRead(user.uid, otherUserId, user.uid);
 
     return () => unsubscribe();
   }, [user?.uid, otherUserId]);
@@ -74,13 +69,6 @@ export default function Chat() {
     setError("");
 
     try {
-      console.log("📤 Enviando mensaje:", {
-        senderId: user.uid,
-        senderName: user.displayName || "Usuario",
-        receiverId: otherUserId,
-        text: inputText.substring(0, 50),
-      });
-
       await sendMessage({
         senderId: user.uid,
         senderName: user.displayName || "Usuario",
@@ -89,7 +77,6 @@ export default function Chat() {
         text: inputText,
       });
 
-      console.log("✅ Mensaje enviado correctamente");
       setInputText("");
       setError("");
       inputRef.current?.focus();
@@ -103,7 +90,7 @@ export default function Chat() {
 
 
   // Agrupar mensajes por remitente consecutivos
-  const groupedMessages = messages.reduce((acc, msg, idx) => {
+  const groupedMessages = messages.reduce((acc, msg) => {
     const lastGroup = acc[acc.length - 1];
     if (lastGroup && lastGroup[0].senderId === msg.senderId) {
       lastGroup.push(msg);

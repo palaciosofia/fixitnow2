@@ -2,158 +2,129 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, CheckCircle, AlertCircle, Upload } from "lucide-react";
-import { markPaymentAsPaidByClient, formatAmount, uploadCashProof } from "../services/payments";
+import { reportPaymentByClient, uploadPaymentProof, formatAmount } from "../services/payments";
+
+// PayPal solo aparece si está configurado en el .env.
+// PayPal no acepta COP, así que se convierte a USD con la tasa configurada.
+const PAYPAL_BUSINESS_ID = import.meta.env.VITE_PAYPAL_BUSINESS_ID || "";
+const COP_PER_USD = Number(import.meta.env.VITE_COP_PER_USD) || 0;
+const PAYPAL_ENABLED = Boolean(PAYPAL_BUSINESS_ID && COP_PER_USD > 0);
+
+const METHODS = [
+  PAYPAL_ENABLED && { id: "paypal", label: "🅿️ PayPal", desc: "Pago en línea (se cobra en USD)" },
+  { id: "transfer", label: "🏦 Transferencia bancaria", desc: "Reporta la transferencia que ya hiciste" },
+  { id: "cash", label: "💵 Efectivo", desc: "Pago en persona, con foto del comprobante" },
+].filter(Boolean);
+
+const EMPTY_TRANSFER = { bankName: "", accountHolder: "", reference: "" };
 
 export default function PaymentModal({ isOpen, onClose, payment, onPaymentSuccess }) {
   const [step, setStep] = useState("method"); // "method" | "paypal" | "transfer" | "cash"
-  const [editAmount, setEditAmount] = useState(payment?.amount?.toString() || "0");
   const [selectedMethod, setSelectedMethod] = useState(null);
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
 
-  // Para transferencia bancaria
-  const [bankData, setBankData] = useState({
-    bankName: "",
-    accountHolder: "",
-    accountNumber: "",
-    accountType: "Ahorros", // Ahorros o Corriente
-  });
+  // El monto lo fija la reserva; el cliente no lo puede cambiar.
+  const amount = Number(payment?.amount) || 0;
+  const amountLabel = amount > 0 ? formatAmount(amount) : "A convenir con el técnico";
+  const usdAmount = PAYPAL_ENABLED && amount > 0 ? amount / COP_PER_USD : 0;
 
-  // Para efectivo
+  // Transferencia: datos para que el técnico la identifique
+  const [bankData, setBankData] = useState(EMPTY_TRANSFER);
+
+  // Efectivo: foto del comprobante
   const [cashProof, setCashProof] = useState(null);
   const [cashProofPreview, setCashProofPreview] = useState(null);
 
+  const resetState = () => {
+    setSuccess(false);
+    setStep("method");
+    setSelectedMethod(null);
+    setNotes("");
+    setError("");
+    setBankData(EMPTY_TRANSFER);
+    setCashProof(null);
+    setCashProofPreview(null);
+  };
+
+  const handleClose = () => {
+    resetState();
+    onClose?.();
+  };
+
   const handleCashProofUpload = (e) => {
     const file = e.target.files?.[0];
-    if (file) {
-      setCashProof(file);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setCashProofPreview(reader.result);
-      };
-      reader.readAsDataURL(file);
-    }
+    if (!file) return;
+    setCashProof(file);
+    const reader = new FileReader();
+    reader.onloadend = () => setCashProofPreview(reader.result);
+    reader.readAsDataURL(file);
   };
 
-  const handlePayPalRedirect = () => {
-    const amount = parseFloat(editAmount);
-    if (!amount || amount <= 0) {
-      setError("El monto debe ser mayor a 0");
-      return;
-    }
-
-    // Crear URL de PayPal con parámetros
-    const paypalBusinessId = "tu-paypal-business-id@example.com"; // Cambiar por el real
-    const returnUrl = `${window.location.origin}/mis-reservas?payment_success=true`;
-    const cancelUrl = `${window.location.origin}/mis-reservas?payment_cancelled=true`;
-
-    const paypalUrl = new URL("https://www.paypal.com/cgi-bin/webscr");
-    paypalUrl.searchParams.append("cmd", "_xclick");
-    paypalUrl.searchParams.append("business", paypalBusinessId);
-    paypalUrl.searchParams.append("item_name", `Pago FixItNow - ${payment.bookingId}`);
-    paypalUrl.searchParams.append("amount", amount.toFixed(2));
-    paypalUrl.searchParams.append("currency_code", "USD");
-    paypalUrl.searchParams.append("return", returnUrl);
-    paypalUrl.searchParams.append("cancel_return", cancelUrl);
-    paypalUrl.searchParams.append("invoice", payment.id);
-
-    // Guardar pago y redirigir a PayPal
-    const notes_paypal = `PayPal URL: ${paypalUrl.toString()}`;
-    handlePaymentSubmit("paypal", notes_paypal, paypalUrl.toString());
+  const submitReport = async (method, extraNotes = "", proofUrl = null) => {
+    const finalNotes = [extraNotes, notes].filter(Boolean).join("\n").trim();
+    await reportPaymentByClient(payment.id, { method, notes: finalNotes, proofUrl });
   };
 
-  const handleBankTransferSubmit = async () => {
-    if (!bankData.bankName.trim()) {
-      setError("Por favor ingresa el nombre del banco");
-      return;
-    }
-    if (!bankData.accountHolder.trim()) {
-      setError("Por favor ingresa el nombre del titular");
-      return;
-    }
-    if (!bankData.accountNumber.trim()) {
-      setError("Por favor ingresa el número de cuenta");
-      return;
-    }
-
-    const notes_bank = `Banco: ${bankData.bankName}\nTitular: ${bankData.accountHolder}\nCuenta: ${bankData.accountNumber}\nTipo: ${bankData.accountType}`;
-    await handlePaymentSubmit("transfer", notes_bank);
-  };
-
-  const handleCashSubmit = async () => {
-    if (!cashProof) {
-      setError("Por favor sube una foto como comprobante");
-      return;
-    }
-
-    setLoading(true);
-    try {
-      // Subir foto a Firebase Storage
-      const photoUrl = await uploadCashProof(payment.id, cashProof);
-      const notes_cash = `Efectivo - Comprobante: ${photoUrl}\nMonto: ${editAmount}`;
-      await handlePaymentSubmit("cash", notes_cash);
-    } catch (err) {
-      setError("Error al subir la foto: " + err.message);
-      setLoading(false);
-    }
-  };
-
-  const handlePaymentSubmit = async (method, extraNotes = "", paypalUrl = null) => {
-    const amount = parseFloat(editAmount);
-    if (!amount || amount <= 0) {
-      setError("El monto debe ser mayor a 0");
-      return;
-    }
-
+  const run = async (fn) => {
     setLoading(true);
     setError("");
-
     try {
-      const finalNotes = extraNotes ? `${extraNotes}\n${notes}`.trim() : notes;
-
-      await markPaymentAsPaidByClient(payment.id, {
-        amount,
-        method,
-        notes: finalNotes,
-      });
-
-      // Si es PayPal, redirigir a la URL después de guardar
-      if (method === "paypal" && paypalUrl) {
-        setTimeout(() => {
-          window.location.href = paypalUrl;
-        }, 1000);
-        return;
-      }
-
-      setSuccess(true);
-
-      // Cerrar modal después de 2 segundos
-      setTimeout(() => {
-        onClose();
-        onPaymentSuccess?.();
-        setSuccess(false);
-        setStep("method");
-        setSelectedMethod(null);
-        setEditAmount(payment?.amount?.toString() || "0");
-        setNotes("");
-        setBankData({
-          bankName: "",
-          accountHolder: "",
-          accountNumber: "",
-          accountType: "Ahorros",
-        });
-        setCashProof(null);
-        setCashProofPreview(null);
-      }, 2000);
+      await fn();
     } catch (err) {
       console.error("Error en pago:", err);
-      setError(err.message || "Error al procesar el pago");
+      setError(err?.message || "Error al procesar el pago");
     } finally {
       setLoading(false);
     }
   };
+
+  const finishSuccess = () => {
+    setSuccess(true);
+    setTimeout(() => {
+      onPaymentSuccess?.();
+      handleClose();
+    }, 2000);
+  };
+
+  const handlePayPalRedirect = () =>
+    run(async () => {
+      if (!usdAmount) throw new Error("Esta reserva no tiene un monto definido para pagar en línea.");
+
+      const paypalUrl = new URL("https://www.paypal.com/cgi-bin/webscr");
+      paypalUrl.searchParams.append("cmd", "_xclick");
+      paypalUrl.searchParams.append("business", PAYPAL_BUSINESS_ID);
+      paypalUrl.searchParams.append("item_name", `Pago FixItNow - Reserva ${payment.bookingId}`);
+      paypalUrl.searchParams.append("amount", usdAmount.toFixed(2));
+      paypalUrl.searchParams.append("currency_code", "USD");
+      paypalUrl.searchParams.append("return", `${window.location.origin}/mis-reservas?payment_success=true`);
+      paypalUrl.searchParams.append("cancel_return", `${window.location.origin}/mis-reservas?payment_cancelled=true`);
+      paypalUrl.searchParams.append("invoice", payment.id);
+
+      await submitReport("paypal", `PayPal: USD ${usdAmount.toFixed(2)} (${formatAmount(amount)})`);
+      window.location.href = paypalUrl.toString();
+    });
+
+  const handleBankTransferSubmit = () =>
+    run(async () => {
+      if (!bankData.bankName.trim()) throw new Error("Ingresa el banco desde el que transferiste");
+      if (!bankData.accountHolder.trim()) throw new Error("Ingresa el nombre del titular");
+      if (!bankData.reference.trim()) throw new Error("Ingresa el número de referencia o comprobante");
+
+      const notesBank = `Banco: ${bankData.bankName}\nTitular: ${bankData.accountHolder}\nReferencia: ${bankData.reference}`;
+      await submitReport("transfer", notesBank);
+      finishSuccess();
+    });
+
+  const handleCashSubmit = () =>
+    run(async () => {
+      if (!cashProof) throw new Error("Sube una foto como comprobante");
+      const proofUrl = await uploadPaymentProof(payment.id, cashProof);
+      await submitReport("cash", "Pago en efectivo", proofUrl);
+      finishSuccess();
+    });
 
   return (
     <AnimatePresence>
@@ -164,7 +135,7 @@ export default function PaymentModal({ isOpen, onClose, payment, onPaymentSucces
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={onClose}
+            onClick={handleClose}
             className="fixed inset-0 bg-black/50 z-50"
           />
 
@@ -185,7 +156,7 @@ export default function PaymentModal({ isOpen, onClose, payment, onPaymentSucces
                     Procesar Pago
                   </h2>
                   <button
-                    onClick={onClose}
+                    onClick={handleClose}
                     className="p-2 hover:bg-white/20 rounded-full transition-colors"
                   >
                     <X className="w-5 h-5" />
@@ -210,37 +181,19 @@ export default function PaymentModal({ isOpen, onClose, payment, onPaymentSucces
                       <CheckCircle className="w-8 h-8 text-emerald-600" />
                     </motion.div>
                     <h3 className="text-xl font-black text-gray-900 mb-2" style={{ fontFamily: "Space Grotesk" }}>
-                      ¡Pago Exitoso!
+                      ¡Pago reportado!
                     </h3>
                     <p className="text-gray-600">
-                      Tu pago de ${parseFloat(editAmount).toLocaleString("es-CO")} ha sido registrado
+                      Reportaste tu pago de {amountLabel}. El técnico lo revisará y lo confirmará.
                     </p>
                   </motion.div>
                 ) : step === "method" ? (
                   // Step 1: Seleccionar método
                   <>
-                    {/* Monto */}
-                    <div className="space-y-2">
-                      <label className="text-sm font-semibold text-gray-900">
-                        Monto a pagar
-                      </label>
-                      <div className="relative">
-                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-700 font-bold">
-                          $
-                        </span>
-                        <input
-                          type="number"
-                          min="0"
-                          step="1"
-                          value={editAmount}
-                          onChange={(e) => setEditAmount(e.target.value)}
-                          className="w-full pl-8 pr-4 py-3 bg-gradient-to-br from-emerald-50 to-teal-50 rounded-2xl border-2 border-emerald-200 focus:border-emerald-600 focus:outline-none font-bold text-lg"
-                          placeholder="0"
-                        />
-                      </div>
-                      <p className="text-xs text-gray-500">
-                        Monto sugerido: ${parseFloat(payment?.amount || 0).toLocaleString("es-CO")}
-                      </p>
+                    {/* Monto (fijo, lo define la reserva) */}
+                    <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-2xl border-2 border-emerald-200 p-4">
+                      <p className="text-sm font-semibold text-gray-900">Monto a pagar</p>
+                      <p className="text-2xl font-black text-emerald-700 mt-1">{amountLabel}</p>
                     </div>
 
                     {/* Payment Methods */}
@@ -249,11 +202,7 @@ export default function PaymentModal({ isOpen, onClose, payment, onPaymentSucces
                         Selecciona método de pago:
                       </p>
 
-                      {[
-                        { id: "paypal", label: "🅿️ PayPal", desc: "Pago en línea seguro" },
-                        { id: "transfer", label: "🏦 Transferencia Bancaria", desc: "Débito directo" },
-                        { id: "cash", label: "💵 Efectivo", desc: "Pago en persona" },
-                      ].map((method) => (
+                      {METHODS.map((method) => (
                         <motion.button
                           key={method.id}
                           whileHover={{ scale: 1.02 }}
@@ -289,7 +238,7 @@ export default function PaymentModal({ isOpen, onClose, payment, onPaymentSucces
                     {/* CTA Buttons */}
                     <div className="flex gap-3 pt-4">
                       <button
-                        onClick={onClose}
+                        onClick={handleClose}
                         className="flex-1 px-4 py-3 border-2 border-gray-200 text-gray-900 font-bold rounded-2xl hover:bg-gray-50 transition-colors"
                       >
                         Cancelar
@@ -309,8 +258,9 @@ export default function PaymentModal({ isOpen, onClose, payment, onPaymentSucces
                       </p>
                       <div className="bg-emerald-50 p-4 rounded-2xl">
                         <p className="text-2xl font-bold text-emerald-600">
-                          ${parseFloat(editAmount).toLocaleString("es-CO")}
+                          USD {usdAmount.toFixed(2)}
                         </p>
+                        <p className="text-xs text-gray-500 mt-1">Equivale a {amountLabel}</p>
                       </div>
 
                       {/* Notes */}
@@ -361,17 +311,17 @@ export default function PaymentModal({ isOpen, onClose, payment, onPaymentSucces
                   // Step 3: Transferencia Bancaria
                   <>
                     <div className="space-y-4">
-                      <h3 className="text-lg font-bold text-gray-900">Datos de Transferencia</h3>
+                      <h3 className="text-lg font-bold text-gray-900">Datos de la transferencia que hiciste</h3>
 
                       <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3">
                         <p className="text-sm text-amber-800">
-                          <strong>Monto a transferir:</strong> ${parseFloat(editAmount).toLocaleString("es-CO")}
+                          <strong>Monto a transferir:</strong> {amountLabel}
                         </p>
                       </div>
 
                       <div className="space-y-3">
                         <div>
-                          <label className="text-sm font-semibold text-gray-900">Banco</label>
+                          <label className="text-sm font-semibold text-gray-900">Banco de origen</label>
                           <input
                             type="text"
                             placeholder="Ej: Bancolombia, BBVA, etc."
@@ -393,26 +343,14 @@ export default function PaymentModal({ isOpen, onClose, payment, onPaymentSucces
                         </div>
 
                         <div>
-                          <label className="text-sm font-semibold text-gray-900">Número de Cuenta</label>
+                          <label className="text-sm font-semibold text-gray-900">Número de referencia / comprobante</label>
                           <input
                             type="text"
-                            placeholder="Ej: 123456789"
-                            value={bankData.accountNumber}
-                            onChange={(e) => setBankData({ ...bankData, accountNumber: e.target.value })}
+                            placeholder="Ej: 0012345678"
+                            value={bankData.reference}
+                            onChange={(e) => setBankData({ ...bankData, reference: e.target.value })}
                             className="w-full mt-1 p-3 bg-gray-50 rounded-2xl border-2 border-gray-200 focus:border-emerald-600 focus:outline-none text-sm"
                           />
-                        </div>
-
-                        <div>
-                          <label className="text-sm font-semibold text-gray-900">Tipo de Cuenta</label>
-                          <select
-                            value={bankData.accountType}
-                            onChange={(e) => setBankData({ ...bankData, accountType: e.target.value })}
-                            className="w-full mt-1 p-3 bg-gray-50 rounded-2xl border-2 border-gray-200 focus:border-emerald-600 focus:outline-none text-sm"
-                          >
-                            <option>Ahorros</option>
-                            <option>Corriente</option>
-                          </select>
                         </div>
                       </div>
 
@@ -469,7 +407,7 @@ export default function PaymentModal({ isOpen, onClose, payment, onPaymentSucces
                       <div className="bg-green-50 border border-green-200 rounded-2xl p-4 text-center">
                         <p className="text-sm text-green-800 mb-2">Monto a Pagar</p>
                         <p className="text-3xl font-black text-green-600">
-                          ${parseFloat(editAmount).toLocaleString("es-CO")}
+                          {amountLabel}
                         </p>
                       </div>
 
@@ -493,7 +431,7 @@ export default function PaymentModal({ isOpen, onClose, payment, onPaymentSucces
                           </div>
                           <input
                             type="file"
-                            accept="image/*"
+                            accept="image/jpeg,image/png,image/webp"
                             onChange={handleCashProofUpload}
                             className="hidden"
                           />

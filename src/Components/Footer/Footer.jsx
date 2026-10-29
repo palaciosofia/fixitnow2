@@ -5,7 +5,6 @@ import {
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import bannerImage from "../../assets/brands/brand_2.png";
-import logoImg from "../../assets/brands/brand_2.png";
 import bannerLogo from "../../assets/Banner/banner_image.png";
 
 const ESPECIALIDADES = [
@@ -206,9 +205,9 @@ const Footer = () => {
                     { Icon: Phone, text: "+57 (324) 123-4567" },
                     { Icon: Mail, text: "soporte@fixitnow.co" },
                     { Icon: Clock, text: "Lun - Sáb: 9:00 - 18:00" },
-                  ].map((item, idx) => (
+                  ].map((item) => (
                     <motion.div 
-                      key={idx}
+                      key={item.text}
                       className="flex items-center gap-3 p-3 bg-white/5 rounded-xl border border-white/10 hover:bg-white/10 hover:border-emerald-400/30 transition-all cursor-pointer"
                       whileHover={{ x: 4 }}
                     >
@@ -239,7 +238,7 @@ const Footer = () => {
                   { to: "/privacidad", label: "Política de privacidad" },
                   { to: "/contacto", label: "Contacto y soporte" },
                   { to: "/carreras", label: "Trabaja con nosotros" },
-                ].map((item, idx) => (
+                ].map((item) => (
                   <motion.li key={item.to} whileHover={{ x: 4 }}>
                     <Link 
                       to={item.to} 
@@ -266,7 +265,7 @@ const Footer = () => {
                 Nuestros Servicios
               </h5>
               <ul className="space-y-3">
-                {ESPECIALIDADES.map((servicio, idx) => (
+                {ESPECIALIDADES.map((servicio) => (
                   <motion.li key={servicio} whileHover={{ x: 4 }}>
                     <Link 
                       to={`/tecnicos?esp=${encodeURIComponent(servicio)}`} 

@@ -100,7 +100,7 @@ export default function Hero() {
         <NextButton />
 
         <Slider ref={sliderRef} {...settings}>
-          {slides.map((slide, idx) => (
+          {slides.map((slide) => (
             <div key={slide.id} className="relative">
               <div className="bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-600 relative overflow-hidden">
                 

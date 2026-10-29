@@ -1,6 +1,7 @@
 // src/Components/Filters/FilterSidebar.jsx
 import { useMemo, useState, useEffect } from "react";
 import { X, Filter } from "lucide-react";
+import { formatCOP } from "../../utils/money";
 
 export default function FilterSidebar({
   allItems = [],
@@ -11,11 +12,8 @@ export default function FilterSidebar({
   showPriceSort = true,
   loading = false, // <-- NUEVO
 }) {
-  const items = Array.isArray(allItems) ? allItems : [];
-  const money = (n) =>
-    typeof n === "number" && Number.isFinite(n)
-      ? new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 }).format(n)
-      : "—";
+  const items = useMemo(() => (Array.isArray(allItems) ? allItems : []), [allItems]);
+  const money = (n) => formatCOP(n);
 
   // Opciones derivadas del lote visible (server + client)
   const especialidadesBase = useMemo(() => {
@@ -74,7 +72,6 @@ export default function FilterSidebar({
       min: draft.minPrecio ?? precios.min,
       max: draft.maxPrecio ?? precios.max,
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft.minPrecio, draft.maxPrecio, precios.min, precios.max]);
 
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));

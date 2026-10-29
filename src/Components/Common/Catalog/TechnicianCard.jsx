@@ -2,14 +2,9 @@
 import { Link, useNavigate } from "react-router-dom";
 import { Star, MapPin, Tag as TagIcon, CheckCircle, ArrowRight } from "lucide-react";
 
-const money = (v, moneda = "USD") =>
-  typeof v === "number"
-    ? new Intl.NumberFormat("es-AR", {
-        style: "currency",
-        currency: moneda,
-        maximumFractionDigits: 0,
-      }).format(v)
-    : "A convenir";
+import { formatCOP } from "../../../utils/money";
+
+const money = (v) => formatCOP(v, "A convenir");
 
 export default function TechnicianCard({ t }) {
   const nav = useNavigate();
@@ -118,10 +113,10 @@ export default function TechnicianCard({ t }) {
         <div className="space-y-3">
           {/* Precio */}
           <div className="flex items-baseline justify-between">
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Tarifa base</span>
+            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Desde</span>
             <span className="text-lg font-black text-emerald-600" style={{fontFamily: 'Space Grotesk, sans-serif'}}>
               {tarifa !== null
-                ? money(tarifa, t?.moneda || "USD")
+                ? money(tarifa)
                 : "A convenir"}
             </span>
           </div>

@@ -3,10 +3,9 @@ import {
   getAuth,
   setPersistence,
   browserLocalPersistence,
-  GoogleAuthProvider,   
+  GoogleAuthProvider,
 } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -17,14 +16,21 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
+  console.error(
+    "Falta la configuración de Firebase. Copia .env.example como .env.local y llena los valores VITE_FIREBASE_*."
+  );
+}
+
+export const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
 export const auth = getAuth(app);
 export const db = getFirestore(app);
-export const storage = getStorage(app);
 
-// Persistencia local
-setPersistence(auth, browserLocalPersistence);
+// Persistencia local (la sesión sobrevive al cerrar la pestaña)
+setPersistence(auth, browserLocalPersistence).catch((err) =>
+  console.warn("No se pudo activar la persistencia de sesión:", err?.message)
+);
 
 //provider de Google
 export const googleProvider = new GoogleAuthProvider();

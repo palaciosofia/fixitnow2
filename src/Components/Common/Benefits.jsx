@@ -2,7 +2,6 @@ import { CheckCircle, ShieldCheck, CreditCard, Star, Truck, Home, Tag, Sparkles,
 import { motion } from "framer-motion";
 import CountUp from "react-countup";
 import { useInView } from "react-intersection-observer";
-import { useState, useEffect } from "react";
 import SectionTitle from "../SectionTitle/SectionTitle";
 import heroImg1 from "../../assets/Hero/hero_1.png";
 

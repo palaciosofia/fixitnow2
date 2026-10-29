@@ -68,7 +68,9 @@ export default function Register() {
     try {
       const safeRole = role === "tecnico" ? "tecnico" : "cliente";
       localStorage.setItem(ROLE_CACHE_KEY, safeRole);
-    } catch {}
+    } catch {
+      /* almacenamiento no disponible */
+    }
   };
 
   const onSubmit = async (e) => {

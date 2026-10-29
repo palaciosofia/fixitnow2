@@ -16,10 +16,13 @@ import ReviewModal from "../../Components/ReviewModal";
 import { getAllTechs } from "../../services/technicians";
 import { getTechnicianReviews } from "../../services/reviews";
 import { useAuth } from "../../context/AuthProvider";
+import { useNavigate, useLocation } from "react-router-dom";
 
 const Senias = () => {
   // ✅ Tomar usuario del AuthProvider
-  const { user, isCliente } = useAuth();
+  const { user } = useAuth();
+  const nav = useNavigate();
+  const location = useLocation();
 
   const [technicians, setTechnicians] = useState([]);
   const [filteredTechnicians, setFilteredTechnicians] = useState([]);
@@ -113,15 +116,10 @@ const Senias = () => {
   const openReviewModal = (tech) => {
     // ✅ Usar el user del contexto
     if (!user) {
-      alert("Debes iniciar sesión para dejar una reseña");
+      // Lleva al login y vuelve aquí después de iniciar sesión
+      nav("/auth/login", { state: { from: location } });
       return;
     }
-
-    // (Opcional) si SOLO clientes pueden reseñar:
-    // if (!isCliente) {
-    //   alert("Solo los clientes pueden dejar reseñas");
-    //   return;
-    // }
 
     setSelectedTech(tech);
     setShowReviewModal(true);

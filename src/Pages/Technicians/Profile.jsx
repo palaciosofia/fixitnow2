@@ -4,6 +4,8 @@ import { useParams, useNavigate } from "react-router-dom";
 import { getTechBySlug } from "../../services/technicians";
 import { Star, Phone, Award, MapPin } from "lucide-react";
 
+import { formatCOP } from "../../utils/money";
+
 // ⬇️ Fallbacks directos a Firestore por id o por slug
 import { db } from "../../firebase";
 import {
@@ -289,19 +291,13 @@ export default function Profile() {
 
 /* ---------- helpers ---------- */
 function formatMoney(n) {
-  const num = Number(n);
-  if (!Number.isFinite(num)) return "—";
-  return new Intl.NumberFormat("es-AR", {
-    style: "currency",
-    currency: "ARS",
-    maximumFractionDigits: 0,
-  }).format(num);
+  return formatCOP(n, "A convenir");
 }
 
 function formatDate(input) {
   const d = new Date(input);
   if (isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("es-AR");
+  return d.toLocaleDateString("es-CO");
 }
 
 // Acepta claves: lun, mar, mie, jue, vie, sab, dom (o variantes)

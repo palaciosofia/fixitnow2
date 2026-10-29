@@ -25,15 +25,10 @@ export default function Mensajes() {
 
   // Suscribirse a la lista de conversaciones
   useEffect(() => {
-    if (!user?.uid) {
-      console.warn("⚠️ No hay user?.uid en Mensajes");
-      return;
-    }
+    if (!user?.uid) return;
 
-    console.log("✅ Suscribiendo a conversaciones para user:", user.uid);
     setLoading(true);
     const unsubscribe = subscribeToConversationsList(user.uid, (convs) => {
-      console.log("📨 Conversaciones recibidas:", convs.length, convs);
       setConversations(convs);
       setLoading(false);
     });
@@ -46,7 +41,6 @@ export default function Mensajes() {
     if (!user?.uid) return;
 
     const unsubscribe = subscribeToUnreadCount(user.uid, (count) => {
-      console.log("🔴 No leídos:", count);
       setUnreadCount(count);
     });
     return () => unsubscribe();

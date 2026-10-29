@@ -1,52 +1,63 @@
 // src/MainLayout/MainLayout.jsx
-import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
-import { useEffect } from "react";
+import { BrowserRouter, Route, Routes, Navigate, useLocation } from "react-router-dom";
+import { lazy, Suspense, useEffect } from "react";
 import Navbar from "../Components/Navbar/Navbar";
-import Home from "../Pages/Home/Home";
-import Auth from "../Pages/Auth/Auth";
-import Login from "../Pages/Auth/Login/Login";
-import Register from "../Pages/Auth/Register/Register";
-import Forgot from "../Pages/Auth/Forgot/Forgot";
-import Error from "../Pages/Error/Error";
-import AuthCheck from "../AuthCheck/AuthCheck";
 import Footer from "../Components/Footer/Footer";
-import ServiceDetail from "../Pages/ServiceDetail/ServiceDetail";
-import Book from "../Pages/Book/Book";
+import Home from "../Pages/Home/Home";
+import AuthCheck from "../AuthCheck/AuthCheck";
 
 // Protecciones por rol
 import ProtectedRoute from "../routing/ProtectedRoute";
 import AdminRoute from "../routing/AdminRoute";
-import TecnicoDashboard from "../Pages/Tecnico/Dashboard";
-import AdminPanel from "../Pages/Admin/AdminPanel";
-import Perfil from "../Pages/Perfil/Perfil";
-import NoAutorizado from "../Pages/NoAutorizado";
 
+// Las demás páginas se cargan bajo demanda (code-splitting): el usuario solo
+// descarga el código de las páginas que visita.
+const Auth = lazy(() => import("../Pages/Auth/Auth"));
+const Login = lazy(() => import("../Pages/Auth/Login/Login"));
+const Register = lazy(() => import("../Pages/Auth/Register/Register"));
+const Forgot = lazy(() => import("../Pages/Auth/Forgot/Forgot"));
+const NotFound = lazy(() => import("../Pages/Error/Error"));
+const ServiceDetail = lazy(() => import("../Pages/ServiceDetail/ServiceDetail"));
+const Book = lazy(() => import("../Pages/Book/Book"));
+const TecnicoDashboard = lazy(() => import("../Pages/Tecnico/Dashboard"));
+const AdminPanel = lazy(() => import("../Pages/Admin/AdminPanel"));
+const Perfil = lazy(() => import("../Pages/Perfil/Perfil"));
+const NoAutorizado = lazy(() => import("../Pages/NoAutorizado"));
+const Catalog = lazy(() => import("../Pages/Catalog/Catalog"));
+const Profile = lazy(() => import("../Pages/Technicians/Profile"));
+const MisReservas = lazy(() => import("../Pages/Cliente/MisReservas"));
+const Agenda = lazy(() => import("../Pages/Tecnico/Agenda"));
+const Senias = lazy(() => import("../Pages/Senias/Senias"));
+const Pagos = lazy(() => import("../Pages/Pagos/Pagos"));
+const Mensajes = lazy(() => import("../Pages/Mensajes/Mensajes"));
+const Chat = lazy(() => import("../Pages/Chat/Chat"));
+const Info = lazy(() => import("../Pages/Info/Info"));
 
-// ✅ Catálogo
-import Catalog from "../Pages/Catalog/Catalog";
-// ✅ Perfil público del técnico
-import Profile from "../Pages/Technicians/Profile";
+function PageLoader() {
+  return (
+    <div className="min-h-[60vh] flex items-center justify-center" role="status" aria-live="polite">
+      <div className="h-10 w-10 animate-spin rounded-full border-4 border-emerald-200 border-t-emerald-600" />
+      <span className="sr-only">Cargando…</span>
+    </div>
+  );
+}
 
-// ✅ NUEVO: Reservas (cliente) y Agenda (técnico)
-import MisReservas from "../Pages/Cliente/MisReservas";
-import Agenda from "../Pages/Tecnico/Agenda";
-// ✅ Página de Señas
-import Senias from "../Pages/Senias/Senias";
-// ✅ Página de Pagos
-import Pagos from "../Pages/Pagos/Pagos";
-// ✅ Mensajes
-import Mensajes from "../Pages/Mensajes/Mensajes";
-import Chat from "../Pages/Chat/Chat";
+// Al cambiar de página, vuelve arriba (salvo enlaces con #ancla)
+function ScrollToTop() {
+  const { pathname, hash } = useLocation();
+  useEffect(() => {
+    if (!hash) window.scrollTo(0, 0);
+  }, [pathname, hash]);
+  return null;
+}
 
 const MainLayout = () => {
-  useEffect(() => {
-    console.log("App cargada");
-  }, []);
-
   return (
     <BrowserRouter>
+      <ScrollToTop />
       <Navbar />
 
+      <Suspense fallback={<PageLoader />}>
       <Routes>
         {/* Home */}
         <Route
@@ -68,11 +79,11 @@ const MainLayout = () => {
         {/* Público */}
         <Route path="servicio/:id" element={<ServiceDetail />} />
 
-        {/* ✅ Catálogo público */}
+        {/* Catálogo público */}
         <Route path="tecnicos" element={<Catalog />} />
-        {/* ✅ Perfil público por slug */}
+        {/* Perfil público por slug */}
         <Route path="tecnicos/:slug" element={<Profile />} />
-        {/* ✅ Señas - Servicios de lenguaje de señas */}
+        {/* Señas - Servicios de lenguaje de señas */}
         <Route path="senias" element={<Senias />} />
 
         {/* Compatibilidad: /catalogo → /tecnicos */}
@@ -96,7 +107,7 @@ const MainLayout = () => {
           }
         />
 
-        {/* ✅ NUEVO: Cliente → Mis reservas */}
+        {/* Cliente → Mis reservas */}
         <Route
           path="mis-reservas"
           element={
@@ -106,7 +117,7 @@ const MainLayout = () => {
           }
         />
 
-        {/* ✅ NUEVO: Cliente → Pagos */}
+        {/* Cliente → Pagos */}
         <Route
           path="pagos"
           element={
@@ -125,7 +136,7 @@ const MainLayout = () => {
             </ProtectedRoute>
           }
         />
-        {/* ✅ NUEVO: Técnico → Agenda */}
+        {/* Técnico → Agenda */}
         <Route
           path="agenda"
           element={
@@ -151,7 +162,7 @@ const MainLayout = () => {
         {/* Bloqueo por rol */}
         <Route path="no-autorizado" element={<NoAutorizado />} />
 
-        {/* ✅ Mensajes */}
+        {/* Mensajes */}
         <Route
           path="mensajes"
           element={
@@ -169,9 +180,15 @@ const MainLayout = () => {
           }
         />
 
+        {/* Páginas informativas (footer) */}
+        {["about", "contacto", "carreras", "terminos", "privacidad", "cookies"].map((p) => (
+          <Route key={p} path={p} element={<Info page={p} />} />
+        ))}
+
         {/* 404 */}
-        <Route path="*" element={<Error />} />
+        <Route path="*" element={<NotFound />} />
       </Routes>
+      </Suspense>
 
       <Footer />
     </BrowserRouter>

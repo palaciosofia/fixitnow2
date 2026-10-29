@@ -2,127 +2,126 @@
 import { createContext, useContext, useEffect, useState, useMemo } from "react";
 import { onAuthStateChanged, getIdTokenResult, signOut } from "firebase/auth";
 import { auth, db } from "../firebase";
-import { doc, getDoc, onSnapshot } from "firebase/firestore";
+import { doc, onSnapshot } from "firebase/firestore";
 
 const AuthCtx = createContext(null);
+
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAuth = () => useContext(AuthCtx);
 
-const ROLE_CACHE_KEY = "fixit_role"; // caché de UI (no seguridad real)
+const ROLE_CACHE_KEY = "fixit_role"; // caché solo para la UI (la seguridad real está en las reglas)
+
+function readCachedRole() {
+  try {
+    return localStorage.getItem(ROLE_CACHE_KEY);
+  } catch {
+    return null;
+  }
+}
+function writeCachedRole(role) {
+  try {
+    if (role) localStorage.setItem(ROLE_CACHE_KEY, role);
+    else localStorage.removeItem(ROLE_CACHE_KEY);
+  } catch {
+    /* almacenamiento no disponible (modo privado, etc.) */
+  }
+}
+
+/** "Técnico " → "tecnico" (minúsculas, sin tildes ni espacios) */
+function normalizeRole(r) {
+  if (!r) return null;
+  return String(r).trim().toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "") || null;
+}
 
 export default function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [role, setRole] = useState("invitado");
-  const [profile, setProfile] = useState(null);     // perfil Firestore
-  const [claims, setClaims] = useState({ admin: false }); // claims del token
+  const [profile, setProfile] = useState(null); // documento /users/{uid}
+  const [claims, setClaims] = useState({ admin: false }); // custom claims del token
   const [loading, setLoading] = useState(true);
+  const [cachedRole, setCachedRole] = useState(null);
 
   useEffect(() => {
     let unsubProfile = null;
+    let currentUid = null;
+
+    const stopProfile = () => {
+      if (unsubProfile) unsubProfile();
+      unsubProfile = null;
+    };
 
     const unsubAuth = onAuthStateChanged(auth, async (u) => {
+      stopProfile();
+      currentUid = u?.uid ?? null;
       setUser(u);
 
-      // 🔹 Sin usuario: limpia todo
+      // Sin usuario: limpia todo
       if (!u) {
-        setRole("invitado");
         setProfile(null);
         setClaims({ admin: false });
-        unsubProfile && unsubProfile();
-        try { localStorage.removeItem(ROLE_CACHE_KEY); } catch {}
+        setCachedRole(null);
+        writeCachedRole(null);
         setLoading(false);
         return;
       }
 
-      // 🔹 Prefill rápido desde caché para evitar parpadeo
-      const cached = localStorage.getItem(ROLE_CACHE_KEY);
-      if (cached) setRole(cached);
+      // Hasta tener claims y perfil del nuevo usuario, el rol aún no es definitivo
+      setLoading(true);
+      setProfile(null);
 
-      // 🔹 Refresca y lee claims (admin)
+      // Prefill rápido desde caché para evitar parpadeo en la UI
+      setCachedRole(readCachedRole());
+
+      // Claims (admin) — se leen antes de escuchar el perfil
+      let isAdminClaim = false;
       try {
         const tokenRes = await getIdTokenResult(u, true);
-        const isAdminClaim = tokenRes.claims?.admin === true;
-        setClaims({ admin: isAdminClaim });
-        if (isAdminClaim) {
-          setRole("admin");
-          try { localStorage.setItem(ROLE_CACHE_KEY, "admin"); } catch {}
-        }
+        isAdminClaim = tokenRes.claims?.admin === true;
       } catch (err) {
         console.error("Error obteniendo claims:", err);
       }
+      if (currentUid !== u.uid) return; // cambió el usuario mientras esperábamos
+      setClaims({ admin: isAdminClaim });
 
-      // 🔹 Suscripción al perfil (solo si NO es admin por claim)
-      const ref = doc(db, "users", u.uid);
+      // Perfil en tiempo real
       unsubProfile = onSnapshot(
-        ref,
-        async (snap) => {
-          if (snap.exists()) {
-            const data = snap.data();
-            setProfile(data);
+        doc(db, "users", u.uid),
+        (snap) => {
+          const data = snap.exists() ? snap.data() : null;
+          setProfile(data);
 
-            // Si NO tiene claim de admin, el rol proviene del perfil
-            if (!claims.admin) {
-              const newRole = data.role || "cliente";
-              setRole(newRole);
-              try { localStorage.setItem(ROLE_CACHE_KEY, newRole); } catch {}
-            }
-
-            // (Opcional) Si un usuario está bloqueado, lo expulsas (no aplica a admin)
-            if (data.blocked && !claims.admin) {
-              try { await signOut(auth); } catch {}
-            }
-          } else {
-            setProfile(null);
-            if (!claims.admin) {
-              setRole("cliente");
-              try { localStorage.setItem(ROLE_CACHE_KEY, "cliente"); } catch {};
-            }
+          // Un usuario bloqueado por el admin es expulsado (no aplica a admins)
+          if (!isAdminClaim && (data?.blocked === true || data?.bloqueado === true)) {
+            signOut(auth).catch(() => {});
           }
           setLoading(false);
         },
-        // Fallback: lectura puntual si onSnapshot falla
-        async () => {
-          try {
-            const s = await getDoc(ref);
-            if (s.exists()) {
-              const data = s.data();
-              setProfile(data);
-              if (!claims.admin) {
-                const newRole = data.role || "cliente";
-                setRole(newRole);
-                try { localStorage.setItem(ROLE_CACHE_KEY, newRole); } catch {}
-              }
-            } else {
-              setProfile(null);
-              if (!claims.admin) {
-                setRole("cliente");
-                try { localStorage.setItem(ROLE_CACHE_KEY, "cliente"); } catch {}
-              }
-            }
-          } finally {
-            setLoading(false);
-          }
+        (err) => {
+          console.error("Error leyendo el perfil:", err);
+          setProfile(null);
+          setLoading(false);
         }
       );
     });
 
     return () => {
-      unsubAuth && unsubAuth();
-      unsubProfile && unsubProfile();
+      unsubAuth();
+      stopProfile();
     };
-  }, [/* intencionalmente vacío: el flujo de auth se vuelve a montar solo */]);
+  }, []);
 
-  // 🔸 Si llega/actualiza la claim admin después del snapshot, forzamos rol visible
+  // Rol efectivo: claim admin > rol del perfil > caché > cliente
+  const profileRole = normalizeRole(profile?.role ?? profile?.rol ?? profile?.tipo);
+  const role = useMemo(() => {
+    if (!user) return "invitado";
+    if (claims.admin) return "admin";
+    if (profileRole) return profileRole;
+    if (loading && cachedRole) return cachedRole;
+    return "cliente";
+  }, [user, claims.admin, profileRole, loading, cachedRole]);
+
   useEffect(() => {
-    if (claims?.admin) {
-      setRole("admin");
-      try { localStorage.setItem(ROLE_CACHE_KEY, "admin"); } catch {}
-    }
-  }, [claims?.admin]);
-
-  /* -------- Helpers para la UI -------- */
-  const isCliente = role === "cliente";
-  const isTecnico = role === "tecnico";
-  const isAdmin   = role === "admin" || claims.admin === true;
+    if (user && !loading) writeCachedRole(role);
+  }, [user, loading, role]);
 
   const value = useMemo(
     () => ({
@@ -131,9 +130,9 @@ export default function AuthProvider({ children }) {
       profile,
       claims,
       loading,
-      isCliente,
-      isTecnico,
-      isAdmin,
+      isCliente: role === "cliente",
+      isTecnico: role === "tecnico",
+      isAdmin: role === "admin",
     }),
     [user, role, profile, claims, loading]
   );

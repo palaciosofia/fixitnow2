@@ -1,5 +1,5 @@
 // src/Pages/Perfil/Perfil.jsx
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "../../context/AuthProvider";
 import { motion } from "framer-motion";
 import {
@@ -13,10 +13,10 @@ import {
 } from "lucide-react";
 import {
   subscribeClientPayments,
-  getClientPaymentsSummary,
+  summarizeClientPayments,
   formatAmount,
-  getPaymentStatusLabel,
 } from "../../services/payments";
+import { paymentStatusMeta } from "../../utils/paymentStatus";
 import { getClientReviews } from "../../services/reviews";
 import PaymentModal from "../../Components/PaymentModal";
 import dayjs from "dayjs";
@@ -26,12 +26,6 @@ export default function Perfil() {
   const [activeTab, setActiveTab] = useState("payments");
   const [payments, setPayments] = useState([]);
   const [reviews, setReviews] = useState([]);
-  const [summary, setSummary] = useState({
-    total: 0,
-    paid: 0,
-    pending: 0,
-    failed: 0,
-  });
   const [loading, setLoading] = useState(true);
   const [selectedPayment, setSelectedPayment] = useState(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -41,17 +35,19 @@ export default function Perfil() {
     if (!user?.uid || !isCliente) return;
 
     setLoading(true);
-    const unsub = subscribeClientPayments(user.uid, async (data) => {
-      setPayments(data);
-
-      // Obtener resumen
-      const sum = await getClientPaymentsSummary(user.uid);
-      setSummary(sum);
-      setLoading(false);
-    });
+    const unsub = subscribeClientPayments(
+      user.uid,
+      (data) => {
+        setPayments(data);
+        setLoading(false);
+      },
+      () => setLoading(false)
+    );
 
     return unsub;
   }, [user?.uid, isCliente]);
+
+  const summary = useMemo(() => summarizeClientPayments(payments), [payments]);
 
   // Cargar reseñas del cliente
   useEffect(() => {
@@ -221,13 +217,7 @@ function PaymentsTab({ payments, summary, loading, onPaymentClick }) {
         ) : (
           <div className="divide-y divide-gray-100">
             {payments.map((payment, i) => {
-              const statusMap = {
-                pending: { color: "yellow", label: "Pendiente", icon: "⏳" },
-                paid: { color: "emerald", label: "Pagado", icon: "✓" },
-                failed: { color: "red", label: "Fallido", icon: "✕" },
-                refunded: { color: "blue", label: "Reembolsado", icon: "↶" },
-              };
-              const status = statusMap[payment.status] || statusMap.pending;
+              const status = paymentStatusMeta(payment.status);
               const canPay = payment.status === "pending";
 
               return (
@@ -242,7 +232,9 @@ function PaymentsTab({ payments, summary, loading, onPaymentClick }) {
                     {/* Info */}
                     <div className="flex-1">
                       <div className="font-semibold text-gray-900">
-                        Reserva #{payment.bookingId?.slice(0, 8)}
+                        {payment.technicianName
+                          ? `Servicio con ${payment.technicianName}`
+                          : `Reserva #${payment.bookingId?.slice(0, 8)}`}
                       </div>
                       <div className="text-sm text-gray-500 mt-1">
                         {dayjs(payment.createdAt?.toDate?.()).format(
@@ -261,9 +253,9 @@ function PaymentsTab({ payments, summary, loading, onPaymentClick }) {
                     {/* Status */}
                     <div className="flex items-center gap-3">
                       <span
-                        className={`bg-${status.color}-100 text-${status.color}-800 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-2`}
+                        className={`${status.badge} px-3 py-1 rounded-full text-xs font-bold flex items-center gap-2`}
                       >
-                        {status.icon} {status.label}
+                        {status.icon} {status.short}
                       </span>
 
                       {/* Action Button */}

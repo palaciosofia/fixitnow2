@@ -6,6 +6,7 @@ import {
   updateDoc,
   doc,
   serverTimestamp,
+  writeBatch,
 } from "firebase/firestore";
 import { db } from "../../firebase";
 import { useAuth } from "../../context/AuthProvider";
@@ -119,7 +120,12 @@ function TecnicosTable() {
     try {
       // 🔹 Trae TODOS los docs de 'technicians' sin orderBy
       const snapshot = await getDocs(collection(db, "technicians"));
-      let items = snapshot.docs.map((d) => ({ ...d.data(), id: d.id }));
+      // "estado" se deriva de los campos que usa la app (publicado / blocked)
+      let items = snapshot.docs.map((d) => {
+        const data = d.data();
+        const estado = data.blocked ? "bloqueado" : data.publicado ? "publicado" : "revision";
+        return { ...data, id: d.id, estado };
+      });
 
       // 🔹 Orden opcional en memoria por createdAt (si existe)
       items.sort((a, b) => {
@@ -160,10 +166,11 @@ function TecnicosTable() {
     return filtered;
   }
 
-  async function handlePublish(id, estado) {
+  // Publicar / ocultar del catálogo (campo `publicado`, el que lee el catálogo)
+  async function handlePublish(tecnico) {
     try {
-      await updateDoc(doc(db, "technicians", id), {
-        estado: estado === "publicado" ? "revision" : "publicado",
+      await updateDoc(doc(db, "technicians", tecnico.id), {
+        publicado: tecnico.estado !== "publicado",
         updatedAt: serverTimestamp(),
       });
       loadTecnicos();
@@ -172,17 +179,30 @@ function TecnicosTable() {
     }
   }
 
-  async function handleDelete(id) {
-    if (confirm("¿Estás seguro de que quieres bloquear este técnico?")) {
-      try {
-        await updateDoc(doc(db, "technicians", id), {
-          estado: "bloqueado",
-          updatedAt: serverTimestamp(),
-        });
-        loadTecnicos();
-      } catch (error) {
-        console.error("Error deleting técnico:", error);
-      }
+  // Bloquear: oculta del catálogo y bloquea la cuenta del usuario dueño del perfil
+  async function handleBlock(tecnico) {
+    const bloquear = tecnico.estado !== "bloqueado";
+    const pregunta = bloquear
+      ? "¿Bloquear este técnico? Se ocultará del catálogo y no podrá iniciar sesión."
+      : "¿Desbloquear este técnico? Podrá iniciar sesión y volver a publicar su perfil.";
+    if (!window.confirm(pregunta)) return;
+    try {
+      const batch = writeBatch(db);
+      batch.update(doc(db, "technicians", tecnico.id), {
+        blocked: bloquear,
+        ...(bloquear ? { publicado: false } : {}),
+        updatedAt: serverTimestamp(),
+      });
+      const ownerUid = tecnico.uid || tecnico.id;
+      batch.set(
+        doc(db, "users", ownerUid),
+        { blocked: bloquear, updatedAt: serverTimestamp() },
+        { merge: true }
+      );
+      await batch.commit();
+      loadTecnicos();
+    } catch (error) {
+      console.error("Error bloqueando técnico:", error);
     }
   }
 
@@ -250,7 +270,7 @@ function TecnicosTable() {
             >
               <option value="">Todos</option>
               <option value="publicado">Publicado</option>
-              <option value="revision">Revisión</option>
+              <option value="revision">Sin publicar</option>
               <option value="bloqueado">Bloqueado</option>
             </select>
           </div>
@@ -351,7 +371,7 @@ function TecnicosTable() {
                             : "bg-red-100 text-red-700"
                         }`}
                       >
-                        {tecnico.estado || "sin_estado"}
+                        {tecnico.estado === "revision" ? "sin publicar" : tecnico.estado}
                       </span>
                     </td>
                     <td className="px-6 py-4">
@@ -374,10 +394,9 @@ function TecnicosTable() {
                     <td className="px-6 py-4">
                       <div className="flex justify-center gap-2">
                         <button
-                          onClick={() =>
-                            handlePublish(tecnico.id, tecnico.estado)
-                          }
-                          className={`px-4 py-2 rounded-lg font-semibold flex items-center gap-2 text-sm transition ${
+                          onClick={() => handlePublish(tecnico)}
+                          disabled={tecnico.estado === "bloqueado"}
+                          className={`px-4 py-2 rounded-lg font-semibold flex items-center gap-2 text-sm transition disabled:opacity-50 disabled:cursor-not-allowed ${
                             tecnico.estado === "publicado"
                               ? "bg-yellow-100 text-yellow-700 hover:bg-yellow-200"
                               : "bg-green-100 text-green-700 hover:bg-green-200"
@@ -385,15 +404,15 @@ function TecnicosTable() {
                         >
                           <CheckCircle className="w-4 h-4" />
                           {tecnico.estado === "publicado"
-                            ? "Revisión"
+                            ? "Ocultar"
                             : "Publicar"}
                         </button>
                         <button
-                          onClick={() => handleDelete(tecnico.id)}
+                          onClick={() => handleBlock(tecnico)}
                           className="px-4 py-2 rounded-lg font-semibold flex items-center gap-2 text-sm bg-red-100 text-red-700 hover:bg-red-200 transition"
                         >
                           <Trash2 className="w-4 h-4" />
-                          Bloquear
+                          {tecnico.estado === "bloqueado" ? "Desbloquear" : "Bloquear"}
                         </button>
                       </div>
                     </td>
@@ -436,15 +455,7 @@ function UsuariosTable() {
   async function loadUsuarios() {
     setLoading(true);
     try {
-      let snapshot;
-
-      // Intentar primero con "usuarios"
-      try {
-        snapshot = await getDocs(collection(db, "usuarios"));
-      } catch (err) {
-        console.log("Colección 'usuarios' no encontrada, intentando 'users'...");
-        snapshot = await getDocs(collection(db, "users"));
-      }
+      const snapshot = await getDocs(collection(db, "users"));
 
       let items = snapshot.docs.map((d) => {
         const raw = d.data();
@@ -453,8 +464,8 @@ function UsuariosTable() {
           nombre: raw.nombre ?? raw.name ?? "",
           email: raw.email ?? "",
           telefono: raw.telefono ?? "",
-          reservas: raw.reservas ?? [],
-          bloqueado: raw.bloqueado ?? false,
+          role: raw.role ?? "cliente",
+          bloqueado: raw.blocked === true || raw.bloqueado === true,
           createdAt: raw.createdAt ?? null,
         };
       });
@@ -487,27 +498,20 @@ function UsuariosTable() {
     );
   }
 
-  async function handleBlock(id) {
-    if (confirm("¿Bloquear este usuario?")) {
-      try {
-        // Intentar con "usuarios" primero, si falla usar "users"
-        try {
-          await updateDoc(doc(db, "usuarios", id), {
-            bloqueado: true,
-            updatedAt: serverTimestamp(),
-          });
-        } catch (err) {
-          await updateDoc(doc(db, "users", id), {
-            bloqueado: true,
-            updatedAt: serverTimestamp(),
-          });
-        }
-        loadUsuarios();
-      } catch (error) {
-        console.error("Error blocking usuario:", error);
-      }
+  async function handleBlock(usuario) {
+    const bloquear = !usuario.bloqueado;
+    if (!window.confirm(bloquear ? "¿Bloquear este usuario?" : "¿Desbloquear este usuario?")) return;
+    try {
+      await updateDoc(doc(db, "users", usuario.id), {
+        blocked: bloquear,
+        updatedAt: serverTimestamp(),
+      });
+      loadUsuarios();
+    } catch (error) {
+      console.error("Error bloqueando usuario:", error);
     }
   }
+
 
   const usuariosFiltered = aplicarFiltrosUsuarios(usuarios);
 
@@ -602,7 +606,7 @@ function UsuariosTable() {
                     className="px-6 py-4 text-left font-bold text-gray-700"
                     style={{ fontFamily: "Space Grotesk, sans-serif" }}
                   >
-                    Reservas
+                    Rol
                   </th>
                   <th
                     className="px-6 py-4 text-center font-bold text-gray-700"
@@ -640,19 +644,18 @@ function UsuariosTable() {
                       {usuario.telefono || "—"}
                     </td>
                     <td className="px-6 py-4">
-                      <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm font-semibold">
-                        {usuario.reservas?.length || 0}
+                      <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm font-semibold capitalize">
+                        {usuario.role}
                       </span>
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex justify-center">
                         <button
-                          onClick={() => handleBlock(usuario.id)}
-                          disabled={usuario.bloqueado}
-                          className="px-4 py-2 rounded-lg font-semibold flex items-center gap-2 text-sm bg-red-100 text-red-700 hover:bg-red-200 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                          onClick={() => handleBlock(usuario)}
+                          className="px-4 py-2 rounded-lg font-semibold flex items-center gap-2 text-sm bg-red-100 text-red-700 hover:bg-red-200 transition"
                         >
                           <AlertCircle className="w-4 h-4" />
-                          Bloquear
+                          {usuario.bloqueado ? "Desbloquear" : "Bloquear"}
                         </button>
                       </div>
                     </td>

@@ -8,8 +8,8 @@ import {
   getDocs,
   updateDoc,
   doc,
-  increment,
   getDoc,
+  limit as qLimit,
 } from "firebase/firestore";
 import { db } from "../firebase";
 
@@ -20,13 +20,16 @@ const TECHS_COLLECTION = "technicians";
  * Crea una reseña y actualiza el rating del técnico
  */
 export async function createReview(technicianId, clientId, clientName, rating, comment) {
+  if (await hasUserReviewedTechnician(technicianId, clientId)) {
+    throw new Error("Ya dejaste una reseña para este técnico.");
+  }
   try {
     // Crear documento de reseña
     const reviewData = {
       technicianId,
       clientId,
       clientName: clientName || "Cliente Anónimo",
-      rating: parseInt(rating) || 5,
+      rating: Math.min(5, Math.max(1, parseInt(rating, 10) || 5)),
       comment: comment || "",
       createdAt: serverTimestamp(),
       verified: true,
@@ -56,9 +59,9 @@ export async function getTechnicianReviews(technicianId) {
       where("technicianId", "==", technicianId)
     );
     const snapshot = await getDocs(q);
-    return snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
+    return snapshot.docs.map((d) => ({
+      id: d.id,
+      ...d.data(),
     }));
   } catch (error) {
     console.error("Error fetching reviews:", error);
@@ -97,27 +100,30 @@ export async function updateTechnicianRating(technicianId) {
 /**
  * Obtiene todas las reseñas de la plataforma (paginadas)
  */
-export async function getAllReviews(limit = 50) {
+export async function getAllReviews(max = 50) {
   try {
-    const q = query(collection(db, REVIEWS_COLLECTION));
+    const q = query(collection(db, REVIEWS_COLLECTION), qLimit(max));
     const snapshot = await getDocs(q);
-    const allReviews = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
-    
-    // Enriquecer reseñas con datos del técnico
-    const enrichedReviews = await Promise.all(
-      allReviews.map(async (review) => {
-        const techDoc = await getDoc(doc(db, TECHS_COLLECTION, review.technicianId));
-        return {
-          ...review,
-          technicianData: techDoc.exists() ? { id: techDoc.id, ...techDoc.data() } : null,
-        };
+    const allReviews = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+    // Enriquecer con datos del técnico (una lectura por técnico, no por reseña)
+    const techIds = [...new Set(allReviews.map((r) => r.technicianId).filter(Boolean))];
+    const techEntries = await Promise.all(
+      techIds.map(async (tid) => {
+        try {
+          const t = await getDoc(doc(db, TECHS_COLLECTION, tid));
+          return [tid, t.exists() ? { id: t.id, ...t.data() } : null];
+        } catch {
+          return [tid, null];
+        }
       })
     );
+    const techMap = Object.fromEntries(techEntries);
 
-    return enrichedReviews.slice(0, limit);
+    return allReviews.map((review) => ({
+      ...review,
+      technicianData: techMap[review.technicianId] ?? null,
+    }));
   } catch (error) {
     console.error("Error fetching all reviews:", error);
     return [];
@@ -153,27 +159,23 @@ export async function getClientReviews(clientId) {
     );
     const snapshot = await getDocs(q);
     
-    // Enriquecer con datos del técnico
+    // Enriquecer con el nombre del técnico
     const reviewsWithTechData = await Promise.all(
-      snapshot.docs.map(async (doc) => {
-        const reviewData = doc.data();
+      snapshot.docs.map(async (reviewDoc) => {
+        const reviewData = reviewDoc.data();
+        let technicianName = "Técnico";
         try {
-          const techDoc = await getDoc(doc(db, TECHS_COLLECTION, reviewData.technicianId));
-          return {
-            id: doc.id,
-            ...reviewData,
-            technicianName: techDoc.exists() ? techDoc.data().nombre : "Técnico",
-          };
-        } catch (e) {
-          return {
-            id: doc.id,
-            ...reviewData,
-            technicianName: "Técnico",
-          };
+          if (reviewData.technicianId) {
+            const techDoc = await getDoc(doc(db, TECHS_COLLECTION, reviewData.technicianId));
+            if (techDoc.exists()) technicianName = techDoc.data().nombre || technicianName;
+          }
+        } catch {
+          /* sin acceso al técnico: se deja el nombre genérico */
         }
+        return { id: reviewDoc.id, ...reviewData, technicianName };
       })
     );
-    
+
     return reviewsWithTechData;
   } catch (error) {
     console.error("Error fetching client reviews:", error);

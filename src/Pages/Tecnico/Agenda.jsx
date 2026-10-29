@@ -10,9 +10,10 @@ import {
   doc,
   getDoc,
   updateDoc,
-  deleteDoc,
-  serverTimestamp,   // 👈 añadido
 } from "firebase/firestore";
+import { Link } from "react-router-dom";
+import { markBookingPaid, cancelBookingAndPayment } from "../../services/payments";
+import { paymentStatusMeta } from "../../utils/paymentStatus";
 import dayjs from "dayjs";
 import { useAuth } from "../../context/AuthProvider";
 import useMyTechId from "../../hooks/useMyTechId";
@@ -100,9 +101,10 @@ export default function Agenda() {
 
         // Pre-cargar nombres de clientes que falten
         const missing = data
+          .filter((r) => !r.clientName) // la reserva ya trae el nombre
           .map((r) => r.clientId)
           .filter(Boolean)
-          .filter((u) => !clientNames[u] && !loadingUidsRef.current.has(u));
+          .filter((u) => !(u in clientNames) && !loadingUidsRef.current.has(u));
         if (missing.length) missing.forEach(loadClientName);
       },
       (e) => {
@@ -123,16 +125,16 @@ export default function Agenda() {
       loadingUidsRef.current.add(userId);
       
       const snap = await getDoc(doc(db, "users", userId));
-      let label = userId;
+      let label = null;
       if (snap.exists()) {
         const d = snap.data();
         // Intenta varios campos donde podría estar el nombre
-        label = d?.name || d?.nombre || d?.displayName || d?.email || userId;
+        label = d?.name || d?.nombre || d?.displayName || d?.email || null;
       }
       setClientNames((prev) => ({ ...prev, [userId]: label }));
-    } catch (error) {
-      // Silenciar errores de permisos y simplemente usar el fallback
-      setClientNames((prev) => ({ ...prev, [userId]: userId }));
+    } catch {
+      // Sin permiso para leer el perfil: se usa el nombre guardado en la reserva
+      setClientNames((prev) => ({ ...prev, [userId]: null }));
     } finally {
       loadingUidsRef.current.delete(userId);
     }
@@ -141,9 +143,10 @@ export default function Agenda() {
   // Precargar nombres cuando rows cambia
   useEffect(() => {
     const missingIds = rows
-      .map((r) => r.clientId)
+      .filter((r) => !r.clientName) // la reserva ya trae el nombre
+          .map((r) => r.clientId)
       .filter(Boolean)
-      .filter((id) => !clientNames[id] && !loadingUidsRef.current.has(id));
+      .filter((id) => !(id in clientNames) && !loadingUidsRef.current.has(id));
     
     if (missingIds.length > 0) {
       // Cargar en paralelo (máx 5 simultáneamente para no saturar)
@@ -165,52 +168,50 @@ export default function Agenda() {
   const gUpcoming = useMemo(() => groupByDate(upcoming), [upcoming]);
   const gPast = useMemo(() => groupByDate(past), [past]);
 
+  // Mensajes de resultado de las acciones (en lugar de alert())
+  const [notice, setNotice] = useState(null); // { type: "ok" | "error", text }
+  const flash = (type, text) => {
+    setNotice({ type, text });
+    setTimeout(() => setNotice(null), 4000);
+  };
+
   // Acciones
-  async function accept(id) {
+  async function accept(booking) {
     try {
-      await updateDoc(doc(db, "reservas", id), { status: "confirmada" });
+      await updateDoc(doc(db, "reservas", booking.id), { status: "confirmada" });
+      flash("ok", "Reserva confirmada.");
     } catch (e) {
       console.error(e);
-      alert("No se pudo aceptar la reserva.");
+      flash("error", "No se pudo aceptar la reserva.");
     }
   }
 
-  async function cancel(id, ts) {
-    // Bloquea cancelación si ya pasó (y protección si falta poco)
-    if (isPastTs(ts)) return alert("No puedes cancelar una reserva pasada.");
-    if (isWithinNextHoursTs(ts, 2)) {
-      const okSoon = confirm(
-        "La reserva inicia pronto (≤ 2h). ¿Seguro que quieres cancelarla?"
-      );
-      if (!okSoon) return;
-    } else {
-      const ok = confirm("¿Cancelar esta reserva?");
-      if (!ok) return;
-    }
-    try {
-      // Opción A: borrar
-      await deleteDoc(doc(db, "reservas", id));
+  async function cancel(booking) {
+    const ts = booking.scheduledAt;
+    if (isPastTs(ts)) return flash("error", "No puedes cancelar una reserva pasada.");
+    const question = isWithinNextHoursTs(ts, 2)
+      ? "La reserva inicia pronto (≤ 2h). ¿Seguro que quieres cancelarla?"
+      : "¿Cancelar esta reserva?";
+    if (!window.confirm(question)) return;
 
-      // Opción B: marcar como cancelada (descomenta y comenta deleteDoc):
-      // await updateDoc(doc(db, "reservas", id), { status: "cancelada" });
+    try {
+      // Borra la reserva (libera la franja) y deja el pago como "cancelado".
+      await cancelBookingAndPayment(booking);
+      flash("ok", "Reserva cancelada.");
     } catch (e) {
       console.error(e);
-      alert("No se pudo cancelar. Intenta de nuevo.");
+      flash("error", "No se pudo cancelar. Intenta de nuevo.");
     }
   }
 
-  // 🔹 Nivel 1: marcar reserva como pagada
-  async function markPaid(id) {
+  // Marca la reserva y su documento de pago como pagados
+  async function markPaid(booking) {
     try {
-      await updateDoc(doc(db, "reservas", id), {
-        paymentStatus: "paid",        // o "pagado" si quieres
-        paymentMethod: "manual",      // para nivel 1 basta con algo genérico
-        paymentUpdatedAt: serverTimestamp(),
-      });
-      alert("Reserva marcada como pagada.");
+      await markBookingPaid(booking);
+      flash("ok", "Reserva marcada como pagada.");
     } catch (e) {
       console.error(e);
-      alert("No se pudo marcar como pagada.");
+      flash("error", "No se pudo marcar como pagada.");
     }
   }
 
@@ -237,7 +238,11 @@ export default function Agenda() {
           </div>
           <h3 className="text-xl font-bold text-gray-900 mb-2">Perfil no encontrado</h3>
           <p className="text-gray-600">
-            No encontramos tu técnico. Crea/actualiza tu perfil en /perfil.
+            No encontramos tu perfil de técnico.{" "}
+            <Link to="/mi-perfil" className="text-emerald-700 font-semibold underline">
+              Complétalo aquí
+            </Link>
+            .
           </p>
         </div>
       </div>
@@ -313,7 +318,19 @@ export default function Agenda() {
           </div>
         </div>
 
-        {/* Próximas */}
+        {notice && (
+          <div
+            role="status"
+            className={`mb-6 rounded-2xl border p-4 text-sm font-semibold ${
+              notice.type === "ok"
+                ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                : "bg-red-50 border-red-200 text-red-700"
+            }`}
+          >
+            {notice.text}
+          </div>
+        )}
+
         {/* Calendario */}
         <CalendarioReservas reservas={rows} />
 
@@ -327,7 +344,7 @@ export default function Agenda() {
           onCancel={cancel}
           emptyText="No tienes reservas próximas."
           isUpcoming={true}
-          onMarkPaid={markPaid}   // 👈 aquí lo pasamos
+          onMarkPaid={markPaid}
         />
 
         {/* Historial */}
@@ -340,7 +357,7 @@ export default function Agenda() {
           onCancel={null}
           emptyText="Sin historial todavía."
           isUpcoming={false}
-          onMarkPaid={null}
+          onMarkPaid={markPaid}
         />
       </div>
     </div>
@@ -356,7 +373,7 @@ function SectionTech({
   onCancel,
   emptyText,
   isUpcoming,
-  onMarkPaid,   // 👈 nueva prop
+  onMarkPaid,
 }) {
   return (
     <section className="mb-12">
@@ -434,8 +451,9 @@ function SectionTech({
               // 🔹 info de pago
               const paymentStatus = it.paymentStatus || "pending";
               const isPaid = paymentStatus === "paid";
+              const payMeta = paymentStatusMeta(paymentStatus);
               const canMarkPaid =
-                !!onMarkPaid && !past && status === "confirmed" && !isPaid;
+                !!onMarkPaid && status === "confirmed" && !isPaid;
 
               return (
                 <div
@@ -514,15 +532,9 @@ function SectionTech({
 
                       {/* Badge pago */}
                       <div className="text-xs">
-                        {isPaid ? (
-                          <span className="inline-flex items-center px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200">
-                            💰 Pagado
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center px-3 py-1 rounded-full bg-yellow-50 text-yellow-700 font-semibold border border-yellow-200">
-                            💳 Pago pendiente
-                          </span>
-                        )}
+                        <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full font-semibold ${payMeta.badge}`}>
+                          {payMeta.icon} {payMeta.label}
+                        </span>
                       </div>
 
                       {(canAccept || canCancel || canMarkPaid) && (
@@ -530,7 +542,7 @@ function SectionTech({
                           {canAccept && (
                             <button
                               className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-semibold shadow-lg hover:shadow-emerald-500/25 transition-all duration-300 transform hover:scale-105"
-                              onClick={() => onAccept(it.id)}
+                              onClick={() => onAccept(it)}
                               title="Aceptar reserva"
                             >
                               <Check className="w-5 h-5" />
@@ -540,8 +552,8 @@ function SectionTech({
 
                           {canCancel && (
                             <button
-                              className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl border-2 border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 font-semibold transición-all duration-300"
-                              onClick={() => onCancel(it.id, it.scheduledAt)}
+                              className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl border-2 border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 font-semibold transition-all duration-300"
+                              onClick={() => onCancel(it)}
                               title="Cancelar reserva"
                             >
                               <Trash2 className="w-5 h-5" />
@@ -552,7 +564,7 @@ function SectionTech({
                           {canMarkPaid && (
                             <button
                               className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl border-2 border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:border-emerald-300 font-semibold transition-all duration-300"
-                              onClick={() => onMarkPaid(it.id)}
+                              onClick={() => onMarkPaid(it)}
                               title="Marcar como pagada"
                             >
                               💰
@@ -571,7 +583,7 @@ function SectionTech({
       ))}
 
       {/* Agregar estilos de animación */}
-      <style jsx>{`
+      <style>{`
         @keyframes fadeInUp {
           from {
             opacity: 0;

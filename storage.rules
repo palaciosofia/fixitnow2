@@ -1,0 +1,34 @@
+rules_version = '2';
+
+// Reglas de Firebase Storage para FixItNow.
+// Despliegue:  firebase deploy --only storage
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Comprobantes de pago: payments/{paymentId}/{archivo}
+    match /payments/{paymentId}/{fileName} {
+      function payment() {
+        return firestore.get(/databases/(default)/documents/payments/$(paymentId)).data;
+      }
+
+      // Lo ven el cliente y el técnico del pago
+      allow read: if request.auth != null
+        && (payment().clientId == request.auth.uid
+            || payment().technicianId == request.auth.uid
+            || request.auth.token.get('admin', false) == true);
+
+      // Solo el cliente del pago sube el comprobante: imagen de máximo 5 MB
+      allow create: if request.auth != null
+        && payment().clientId == request.auth.uid
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp)');
+
+      allow update, delete: if false;
+    }
+
+    // Todo lo demás, cerrado
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -14,11 +14,19 @@ export default function useMyTechId(uid) {
       where("uid", "==", uid),
       limit(1)
     );
-    const unsub = onSnapshot(q, snap => {
-      if (!snap.empty) setTid(snap.docs[0].id);
-      else setTid(null);
-      setLoading(false);
-    });
+    setLoading(true);
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        setTid(snap.empty ? null : snap.docs[0].id);
+        setLoading(false);
+      },
+      (err) => {
+        console.error("Error buscando el perfil de técnico:", err);
+        setTid(null);
+        setLoading(false);
+      }
+    );
     return unsub;
   }, [uid]);
 

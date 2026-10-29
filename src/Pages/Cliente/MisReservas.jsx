@@ -1,6 +1,6 @@
 // src/Pages/Cliente/MisReservas.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { db } from "../../firebase";
 import {
   collection, query, where, orderBy, onSnapshot,
@@ -9,7 +9,8 @@ import {
 import dayjs from "dayjs";
 import { useAuth } from "../../context/AuthProvider";
 import { Clock, User, Phone, XCircle, CreditCard, CheckCircle, MessageSquare } from "lucide-react";
-import { getPaymentByBookingId } from "../../services/payments";
+import { getOrCreatePaymentForBooking } from "../../services/payments";
+import { paymentStatusMeta } from "../../utils/paymentStatus";
 import PaymentModal from "../../Components/PaymentModal";
 import CalendarioReservas from "../../Components/CalendarioReservas/CalendarioReservas";
 
@@ -55,6 +56,9 @@ export default function MisReservas() {
   const [err, setErr] = useState("");
   const [selectedPayment, setSelectedPayment] = useState(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [payErr, setPayErr] = useState("");
+  const location = useLocation();
+  const flash = location.state?.flash || "";
 
   // cache tid -> nombre técnico
   const [techNames, setTechNames] = useState({});
@@ -124,20 +128,14 @@ export default function MisReservas() {
   if (err) return <p className="p-6 text-red-600">{err}</p>;
 
   const handlePaymentClick = async (booking) => {
+    setPayErr("");
     try {
-      console.log("🔍 Buscando pago para booking ID:", booking.id);
-      const payment = await getPaymentByBookingId(booking.id);
-      console.log("💰 Pago encontrado:", payment);
-      if (payment) {
-        setSelectedPayment(payment);
-        setShowPaymentModal(true);
-      } else {
-        console.warn("⚠️ No se encontró pago para esta reserva. ID:", booking.id);
-        alert("No se encontró el registro de pago. Por favor intenta más tarde.");
-      }
+      const payment = await getOrCreatePaymentForBooking(booking);
+      setSelectedPayment(payment);
+      setShowPaymentModal(true);
     } catch (error) {
-      console.error("❌ Error obteniendo pago:", error);
-      alert("Error al cargar el pago: " + error.message);
+      console.error("Error obteniendo pago:", error);
+      setPayErr("No pudimos cargar el pago de esta reserva. Intenta de nuevo en unos minutos.");
     }
   };
 
@@ -161,6 +159,14 @@ export default function MisReservas() {
         </div>
       </header>
 
+      {flash && (
+        <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">✅ {flash}</div>
+      )}
+
+      {payErr && (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{payErr}</div>
+      )}
+
       {/* Calendario */}
       <CalendarioReservas reservas={items} />
 
@@ -179,10 +185,6 @@ export default function MisReservas() {
             setSelectedPayment(null);
           }}
           payment={selectedPayment}
-          onPaymentSuccess={() => {
-            // Refresh reservas
-            setItems([]);
-          }}
         />
       )}
     </div>
@@ -220,7 +222,8 @@ function Section({ title, groups, techNames, emptyText, onPaymentClick }) {
               const shortTime = dayjs(r.scheduledAt?.toDate?.()).format("HH:mm");
               const status = humanStatus(r.status);
               const phone = phoneDigits(r.technicianPhone || r.technicianTelefono || "");
-              const isPending = r.paymentStatus === "pending";
+              const isPending = !r.paymentStatus || r.paymentStatus === "pending";
+              const canPay = isPending && r.status !== "cancelada";
 
               return (
                 <li key={r.id} className="bg-white rounded-lg border p-4 flex items-start gap-4 shadow-sm hover:shadow-md transition">
@@ -251,7 +254,7 @@ function Section({ title, groups, techNames, emptyText, onPaymentClick }) {
 
                   {/* acciones */}
                   <div className="flex flex-col items-end gap-2">
-                    {isPending && (
+                    {canPay && (
                       <button
                         onClick={() => onPaymentClick?.(r)}
                         className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-yellow-50 text-yellow-700 border border-yellow-200 text-sm hover:bg-yellow-100 transition"
@@ -262,7 +265,7 @@ function Section({ title, groups, techNames, emptyText, onPaymentClick }) {
                     )}
 
                     <Link
-                      to={`/chat/${r.technicianId}/${encodeURIComponent(techNames[r.technicianId] || 'Técnico')}`}
+                      to={`/chat/${r.technicianId}/${encodeURIComponent(labelTec || 'Técnico')}`}
                       className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-sm hover:bg-blue-100 transition"
                       title="Enviar mensaje"
                     >
@@ -285,13 +288,14 @@ function Section({ title, groups, techNames, emptyText, onPaymentClick }) {
                       </button>
                     )}
 
-                    <button
-                      type="button"
-                      className="text-sm px-3 py-1 rounded-md border bg-white hover:bg-gray-50"
-                      onClick={() => { /* puedes abrir modal/detalle aquí */ }}
-                    >
-                      Ver detalle
-                    </button>
+                    {r.technicianSlug && (
+                      <Link
+                        to={`/tecnicos/${r.technicianSlug}`}
+                        className="text-sm px-3 py-1 rounded-md border bg-white hover:bg-gray-50"
+                      >
+                        Ver técnico
+                      </Link>
+                    )}
                   </div>
                 </li>
               );
@@ -322,15 +326,9 @@ function StatusBadge({ status }) {
 
 // PaymentBadge - Muestra el estado de pago
 function PaymentBadge({ paymentStatus }) {
-  const map = {
-    pending: { cls: "bg-yellow-100 text-yellow-800", icon: "⏳", label: "Pago pendiente" },
-    paid: { cls: "bg-emerald-100 text-emerald-800", icon: "✓", label: "Pagado" },
-    failed: { cls: "bg-red-100 text-red-800", icon: "✕", label: "Pago fallido" },
-    refunded: { cls: "bg-blue-100 text-blue-800", icon: "↶", label: "Reembolsado" },
-  };
-  const meta = map[paymentStatus] || map.pending;
+  const meta = paymentStatusMeta(paymentStatus);
   return (
-    <span className={`inline-flex items-center gap-2 text-xs uppercase tracking-wide px-2 py-1 rounded ${meta.cls}`}>
+    <span className={`inline-flex items-center gap-2 text-xs uppercase tracking-wide px-2 py-1 rounded ${meta.badge}`}>
       <span className="text-[11px] font-medium">{meta.icon}</span>
       <span>{meta.label}</span>
     </span>

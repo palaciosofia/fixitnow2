@@ -8,20 +8,20 @@ import {
   runTransaction,
   serverTimestamp,
   Timestamp,
-  collection,
-  setDoc,
 } from "firebase/firestore";
 import dayjs from "dayjs";
 import { useAuth } from "../../context/AuthProvider";
 import {
   combineDateTime,
   buildSlotId,
+  buildHourlySlots,
+  isPastSlot,
 } from "../../utils/slots";
-import { createPayment } from "../../services/payments";
+import { createPayment, getBookingAmount, formatAmount } from "../../services/payments";
 import { Calendar, Clock, FileText, CheckCircle, AlertCircle, Loader, ArrowLeft } from "lucide-react";
 
-/** Genera horas locales sin consultar disponibilidad */
-function generateHours(start = 8, end = 19) {
+/** Horario por defecto (8:00 a 18:00) para técnicos que aún no configuran el suyo */
+function generateHours(start = 8, end = 17) {
   const arr = [];
   for (let h = start; h <= end; h++) {
     arr.push(`${String(h).padStart(2, "0")}:00`);
@@ -55,28 +55,36 @@ export default function Book() {
       try {
         const snap = await getDoc(doc(db, "technicians", tid));
         if (!snap.exists()) {
-          setWarn("No se pudo cargar el perfil del técnico. Continúas sin perfil.");
-          setTech({ id: tid });
+          setErr("Este técnico no existe o ya no está disponible.");
         } else {
-          setTech({ id: snap.id, ...snap.data() });
+          const data = snap.data();
+          setTech({ id: snap.id, ...data });
+          if (data.disponible === false) {
+            setWarn("Este técnico marcó que por ahora no está tomando trabajos. Puede tardar en responder.");
+          }
         }
       } catch (e) {
         console.error(e);
-        setWarn("No se pudo leer el perfil del técnico. Reservarás sin validaciones de horario.");
-        setTech({ id: tid });
+        setErr("No pudimos cargar el perfil del técnico. Intenta de nuevo en unos minutos.");
       } finally {
         setLoading(false);
       }
     })();
   }, [tid]);
 
+  // Si el técnico configuró horarios por día, se usan; si no, horario por defecto.
+  const tieneHorarios = !!tech?.horarios && typeof tech.horarios === "object";
   const horasDisponibles = useMemo(() => {
     if (!fecha) return [];
-    return generateHours(8, 19);
-  }, [fecha]);
+    const base = tieneHorarios ? buildHourlySlots(tech, fecha) : generateHours();
+    return base.filter((h) => !isPastSlot(fecha, h));
+  }, [fecha, tech, tieneHorarios]);
+
+  const amount = useMemo(() => getBookingAmount(tech), [tech]);
 
   function validateInputs() {
     if (!user?.uid) return "Debes iniciar sesión como cliente para reservar.";
+    if (tech?.uid && tech.uid === user.uid) return "No puedes reservar contigo mismo.";
     if (!fecha || !hora) return "Selecciona fecha y hora.";
     const d = combineDateTime(fecha, hora);
     if (!d || isNaN(d.getTime())) return "Fecha u hora inválidas.";
@@ -129,8 +137,10 @@ export default function Book() {
           status: "solicitada",
           createdAt: serverTimestamp(),
           fuente: "web",
-          
-          // 🔽 Campos de pago iniciales
+
+          // Pago
+          amount,
+          paymentId: rid,
           paymentStatus: "pending",
           paymentMethod: null,
           paymentNote: null,
@@ -138,39 +148,33 @@ export default function Book() {
         });
       });
 
-      // 🔽 Crear documento de pago automáticamente
-      // Monto sugerido (obtener del técnico o usar default de 1)
-      // Si el técnico no tiene precio sugerido, usamos 1 para crear el pago
-      const amount = tech?.precioSugerido || 1;
-      console.log("💰 Intentando crear pago con:", {
-        bookingId: rid,
-        clientId: user.uid,
-        technicianId: tech?.id || tid,
-        amount,
-      });
-      
+      // Crear el documento de pago (su ID es el mismo de la reserva)
       try {
-        const paymentId = await createPayment({
+        await createPayment({
           bookingId: rid,
           clientId: user.uid,
+          clientName: user.displayName || user.email || null,
           technicianId: tech?.id || tid,
+          technicianName: tech?.nombre || null,
           amount,
         });
-        console.log("✅ Pago creado exitosamente. ID:", paymentId);
       } catch (err) {
-        console.error("❌ Error CRÍTICO al crear documento de pago:", {
-          message: err.message,
-          code: err.code,
-          details: err,
-        });
-        // La reserva se creó igualmente, el pago es un detalle
+        // La reserva ya quedó creada; el pago se crea al abrirlo desde "Mis reservas".
+        console.error("No se pudo crear el documento de pago:", err);
       }
 
-      alert("✅ Reserva enviada correctamente. Te avisaremos cuando el técnico confirme.");
-      nav("/mis-reservas");
+      nav("/mis-reservas", {
+        state: { flash: "Reserva enviada. Te avisaremos cuando el técnico la confirme." },
+      });
     } catch (e) {
       console.error(e);
-      setFormErr(e?.message || "No pudimos crear la reserva. Intenta nuevamente.");
+      // Con las reglas de seguridad, leer la reserva de otro cliente da "permission-denied":
+      // significa que esa franja ya está tomada.
+      if (e?.code === "permission-denied") {
+        setFormErr("Ese horario ya está reservado. Elige otra hora.");
+      } else {
+        setFormErr(e?.message || "No pudimos crear la reserva. Intenta nuevamente.");
+      }
     } finally {
       setSaving(false);
     }
@@ -287,6 +291,11 @@ export default function Book() {
                   <option value="">
                     {fecha ? "Selecciona una hora…" : "Primero selecciona una fecha"}
                   </option>
+                  {fecha && horasDisponibles.length === 0 && (
+                    <option value="" disabled>
+                      El técnico no atiende en esta fecha
+                    </option>
+                  )}
                   {horasDisponibles.map((h) => (
                     <option key={h} value={h}>
                       {h} - {dayjs(`2025-01-01T${h}`).add(1, "hour").format("HH:00")}
@@ -389,6 +398,13 @@ export default function Book() {
                   <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Hora</p>
                   <p className="text-lg font-bold text-gray-900">
                     {hora ? `${hora} - ${dayjs(`2025-01-01T${hora}`).add(1, "hour").format("HH:00")}` : "No seleccionada"}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Precio</p>
+                  <p className="text-lg font-bold text-gray-900">
+                    {amount > 0 ? formatAmount(amount) : "A convenir con el técnico"}
                   </p>
                 </div>
               </div>

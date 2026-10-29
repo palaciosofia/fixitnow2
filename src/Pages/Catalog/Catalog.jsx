@@ -102,9 +102,11 @@ export default function Catalog() {
         console.error(e);
         setError("No pudimos cargar el catálogo. Intenta de nuevo.");
       } finally {
-        if (reqIdRef.current !== myReq) return;
-        setLoading(false);
-        setInitialLoaded(true);
+        // Solo la petición más reciente actualiza el estado de carga
+        if (reqIdRef.current === myReq) {
+          setLoading(false);
+          setInitialLoaded(true);
+        }
       }
     };
     run();
@@ -140,8 +142,7 @@ export default function Catalog() {
       console.error(e);
       setError("No pudimos cargar más resultados.");
     } finally {
-      if (reqIdRef.current !== myReq) return;
-      setLoading(false);
+      if (reqIdRef.current === myReq) setLoading(false);
     }
   };
 
@@ -451,7 +452,7 @@ export default function Catalog() {
       </div>
 
       {/* Agregar estilos de animación */}
-      <style jsx>{`
+      <style>{`
         @keyframes fadeInUp {
           from {
             opacity: 0;

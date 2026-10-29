@@ -8,6 +8,8 @@ import {
   getMyTechnicianDoc,
   saveMyTechnicianDoc,
   setPublicado,
+  DEFAULT_HORARIOS,
+  normalizeHorarios,
 } from "../../services/technicians";
 import { uploadToCloudinary } from "../../services/images";
 import { clThumb } from "../../utils/cloudinary";
@@ -54,7 +56,7 @@ const EMPTY = {
   aniosExperiencia: 0,
   tarifaBase: null,
   disponible: true,
-  horarios: "",
+  horarios: DEFAULT_HORARIOS,
 
   // ✅ nuevos
   telefono: "",
@@ -67,7 +69,7 @@ const EMPTY = {
 // =======================================
 export default function TecnicoDashboard() {
   const { user, role, loading: authLoading } = useAuth();
-  const { tid, loading: tidLoading } = useMyTechId(user?.uid);
+  const { tid } = useMyTechId(user?.uid);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [pubLoading, setPubLoading] = useState(false);
@@ -99,6 +101,7 @@ export default function TecnicoDashboard() {
           especialidades: Array.isArray(data?.especialidades) ? data.especialidades : [],
           zonasCobertura: Array.isArray(data?.zonasCobertura) ? data.zonasCobertura : [],
           certificaciones: Array.isArray(data?.certificaciones) ? data.certificaciones : [],
+          horarios: normalizeHorarios(data?.horarios),
         });
       } catch (e) {
         console.error(e);
@@ -195,10 +198,15 @@ export default function TecnicoDashboard() {
     setSaving(true);
     setMsg({ type: "", text: "" });
     try {
+      // Precio "desde": el servicio más barato. Lo usan el catálogo (orden y filtro
+      // por precio) y el monto de cada reserva.
+      const precios = (form.servicios || [])
+        .map((x) => Number(x?.precioSugerido))
+        .filter((n) => Number.isFinite(n) && n > 0);
       const payload = {
         ...form,
         aniosExperiencia: Number(form.aniosExperiencia) || 0,
-        tarifaBase: form.tarifaBase === "" ? null : Number(form.tarifaBase),
+        tarifaBase: precios.length ? Math.min(...precios) : null,
         certificaciones: Array.isArray(form.certificaciones) ? form.certificaciones : [],
         disponibilidadTxt: form.disponibilidadTxt || "",
         telefono: (form.telefono || "").trim(),
@@ -272,7 +280,6 @@ export default function TecnicoDashboard() {
   if (loading || authLoading) return <div className="p-6">Cargando tu perfil…</div>;
 
   // ------- Thumbnails Cloudinary -------
-  const avatar56 = form.fotoURL ? clThumb(form.fotoURL, { w: 56, h: 56 }) : DEFAULT_AVATAR;
   const avatar80 = form.fotoURL ? clThumb(form.fotoURL, { w: 80, h: 80 }) : DEFAULT_AVATAR;
 
   return (
@@ -603,7 +610,17 @@ export default function TecnicoDashboard() {
                   onChange={(e) => set("disponibilidadTxt", e.target.value)}
                   placeholder="Ej: Lunes a Viernes 8:00 AM - 6:00 PM, Sábados 9:00 AM - 1:00 PM"
                 />
+                <p className="text-xs text-gray-500 mt-2">
+                  Este texto se muestra en tu perfil. Las horas que los clientes pueden reservar
+                  salen del horario de abajo.
+                </p>
               </div>
+
+              {/* Horario reservable por día */}
+              <HorarioEditor
+                value={form.horarios}
+                onChange={(h) => set("horarios", h)}
+              />
 
               {/* Switch disponible */}
               <div className="flex items-center justify-between p-4 bg-gradient-to-r from-emerald-50 to-teal-50 rounded-2xl border border-emerald-200">
@@ -970,6 +987,91 @@ function CertificacionesEditor({ value = [], onChange }) {
             <p className="text-sm">Las certificaciones ayudan a generar más confianza</p>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+
+// =======================================
+//   Editor de horario reservable
+// =======================================
+const DIAS_SEMANA = [
+  ["lun", "Lunes"],
+  ["mar", "Martes"],
+  ["mie", "Miércoles"],
+  ["jue", "Jueves"],
+  ["vie", "Viernes"],
+  ["sab", "Sábado"],
+  ["dom", "Domingo"],
+];
+const HORAS = Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, "0")}:00`);
+
+function HorarioEditor({ value, onChange }) {
+  const horarios = value || {};
+
+  const update = (dia, franja) => onChange({ ...horarios, [dia]: franja ? [franja] : [] });
+
+  return (
+    <div className="mb-6">
+      <p className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
+        <Clock className="w-4 h-4 text-blue-600" />
+        Horario en que los clientes pueden reservar
+      </p>
+      <div className="space-y-2">
+        {DIAS_SEMANA.map(([key, label]) => {
+          const franja = horarios[key]?.[0] || null;
+          const activo = !!franja;
+          return (
+            <div
+              key={key}
+              className="flex flex-wrap items-center gap-3 p-3 rounded-2xl border border-gray-200 bg-gray-50"
+            >
+              <label className="flex items-center gap-2 w-32 text-sm font-medium text-gray-800">
+                <input
+                  type="checkbox"
+                  checked={activo}
+                  onChange={(e) =>
+                    update(key, e.target.checked ? { inicio: "08:00", fin: "18:00" } : null)
+                  }
+                  className="w-4 h-4"
+                />
+                {label}
+              </label>
+              {activo ? (
+                <div className="flex items-center gap-2 text-sm">
+                  <select
+                    aria-label={`${label}: desde`}
+                    value={franja.inicio}
+                    onChange={(e) => {
+                      const inicio = e.target.value;
+                      const fin = franja.fin > inicio ? franja.fin : HORAS[Math.min(HORAS.indexOf(inicio) + 1, 23)];
+                      update(key, { inicio, fin });
+                    }}
+                    className="px-3 py-2 rounded-xl border border-gray-300 bg-white"
+                  >
+                    {HORAS.slice(0, 23).map((h) => (
+                      <option key={h} value={h}>{h}</option>
+                    ))}
+                  </select>
+                  <span className="text-gray-500">a</span>
+                  <select
+                    aria-label={`${label}: hasta`}
+                    value={franja.fin}
+                    onChange={(e) => update(key, { inicio: franja.inicio, fin: e.target.value })}
+                    className="px-3 py-2 rounded-xl border border-gray-300 bg-white"
+                  >
+                    {HORAS.filter((h) => h > franja.inicio).map((h) => (
+                      <option key={h} value={h}>{h}</option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <span className="text-sm text-gray-400">No atiende</span>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

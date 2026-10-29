@@ -9,15 +9,17 @@ const ReviewModal = ({ isOpen, onClose, technician, userId, userName }) => {
   const [comment, setComment] = useState("");
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState("");
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     
     if (!comment.trim()) {
-      alert("Por favor escribe un comentario");
+      setError("Por favor escribe un comentario");
       return;
     }
 
+    setError("");
     setLoading(true);
     try {
       await createReview(
@@ -35,8 +37,8 @@ const ReviewModal = ({ isOpen, onClose, technician, userId, userName }) => {
         setRating(5);
       }, 2000);
     } catch (error) {
-      console.error("Error:", error);
-      alert("Error al enviar la reseña");
+      console.error("Error enviando reseña:", error);
+      setError(error?.message || "Error al enviar la reseña");
     } finally {
       setLoading(false);
     }
@@ -186,6 +188,12 @@ const ReviewModal = ({ isOpen, onClose, technician, userId, userName }) => {
                         </div>
                       </div>
                     </motion.div>
+
+                    {error && (
+                      <p role="alert" className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl p-3">
+                        {error}
+                      </p>
+                    )}
 
                     {/* Submit button */}
                     <motion.button
