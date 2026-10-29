@@ -35,6 +35,17 @@ Otros comandos:
 | `npm run preview` | Sirve la compilación localmente |
 | `npm run lint` | Revisa el código con ESLint |
 
+## Despliegue
+
+La app está publicada en Netlify: https://fixitnowsdj.netlify.app
+
+Cada cambio en `main` se publica solo. En Netlify:
+
+- Comando de build: `npm run build`, carpeta de publicación: `dist`.
+- Las variables `VITE_*` de `.env.example` van en *Site configuration → Environment variables*.
+- `public/_redirects` hace que las rutas de React Router funcionen al recargar la página.
+- El dominio de Netlify debe estar en Firebase, en *Authentication → Settings → Authorized domains*.
+
 ## Firebase
 
 El repositorio incluye las reglas de seguridad y los índices:
