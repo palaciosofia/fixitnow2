@@ -1,356 +1,253 @@
 // src/Pages/Cliente/MisReservas.jsx
+// Reservas del cliente: próximas e historial, con estado de la reserva y del pago.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
-import { db } from "../../firebase";
-import {
-  collection, query, where, orderBy, onSnapshot,
-  doc, getDoc
-} from "firebase/firestore";
+import { Link, useLocation } from "react-router-dom";
+import { collection, query, where, orderBy, onSnapshot, doc, getDoc } from "firebase/firestore";
 import dayjs from "dayjs";
+import { CalendarPlus, CalendarX2, MessageCircle, Phone, Star } from "lucide-react";
+import { db } from "../../firebase";
 import { useAuth } from "../../context/AuthProvider";
-import { Clock, User, Phone, XCircle, CreditCard, CheckCircle, MessageSquare } from "lucide-react";
-import { getPaymentByBookingId } from "../../services/payments";
+import { getOrCreatePaymentForBooking, subscribeClientPayments, summarizeClientPayments } from "../../services/payments";
+import { paymentStatusMeta, bookingStatusMeta, normalizeBookingStatus } from "../../utils/paymentStatus";
+import { formatCOP } from "../../utils/money";
 import PaymentModal from "../../Components/PaymentModal";
-import CalendarioReservas from "../../Components/CalendarioReservas/CalendarioReservas";
+import ReviewModal from "../../Components/ReviewModal";
+import { Alert, Badge, Button, Card, CardTitle, EmptyState, Loader, PageHeader, Segmented } from "../../ui";
+import { cx } from "../../ui/cx";
 
-// ---- Helpers de fecha/agrupación (con scheduledAt: Timestamp) ----
-function keyFromTs(ts) {
+function toDate(ts) {
   try {
-    const d = ts?.toDate?.();
-    if (!d) return null;
-    return dayjs(d).format("YYYY-MM-DD");
+    return ts?.toDate?.() || null;
   } catch {
     return null;
   }
 }
-
-function groupByDate(rows = []) {
-  const map = {};
-  for (const r of rows) {
-    const k = keyFromTs(r.scheduledAt);
-    if (!k) continue;
-    if (!map[k]) map[k] = [];
-    map[k].push(r);
-  }
-  return Object.entries(map).sort(([a],[b]) => a.localeCompare(b));
+function isPast(ts) {
+  const d = toDate(ts);
+  return d ? d.getTime() < Date.now() : false;
 }
-
-function isPastTs(ts) {
-  try {
-    const d = ts?.toDate?.();
-    return d ? dayjs(d).isBefore(dayjs()) : false;
-  } catch {
-    return false;
-  }
-}
-
-// -----------------------------------------------------------------------------
 
 export default function MisReservas() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const uid = user?.uid;
+  const location = useLocation();
+  const flashFromNav = location.state?.flash || "";
+  const [flash, setFlash] = useState(flashFromNav);
 
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
-  const [selectedPayment, setSelectedPayment] = useState(null);
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [tab, setTab] = useState("proximas");
+  const [payments, setPayments] = useState([]);
 
-  // cache tid -> nombre técnico
-  const [techNames, setTechNames] = useState({});
-  const loadingTidsRef = useRef(new Set());
+  const [selectedPayment, setSelectedPayment] = useState(null);
+  const [payErr, setPayErr] = useState("");
+  const [reviewTech, setReviewTech] = useState(null);
+
+  // Nombres/teléfonos de técnicos que no vengan en la reserva
+  const [techInfo, setTechInfo] = useState({});
+  const loadingRef = useRef(new Set());
 
   useEffect(() => {
     if (!uid) return;
-
-    // Lee la colección "reservas" del cliente y ordena por fecha/hora
-    const q = query(
-      collection(db, "reservas"),
-      where("clientId", "==", uid),
-      orderBy("scheduledAt", "asc")
+    const q = query(collection(db, "reservas"), where("clientId", "==", uid), orderBy("scheduledAt", "asc"));
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        setItems(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        setLoading(false);
+      },
+      (e) => {
+        console.error(e);
+        setErr("No pudimos cargar tus reservas.");
+        setLoading(false);
+      }
     );
-
-    const unsub = onSnapshot(q, snap => {
-      const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setItems(rows);
-      setLoading(false);
-
-      // precarga nombres de técnicos que no tengamos (si no viene en el doc)
-      const missing = rows
-        .map(r => r.technicianId)
-        .filter(Boolean)
-        .filter(tid => !techNames[tid] && !loadingTidsRef.current.has(tid));
-
-      if (missing.length) missing.forEach(loadTechName);
-    }, e => {
-      console.error(e);
-      
-      setErr(e?.message || "Error al cargar");
-      setLoading(false);
-    });
-
     return unsub;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uid]);
 
-  async function loadTechName(tid) {
-    try {
-      loadingTidsRef.current.add(tid);
-      const snap = await getDoc(doc(db, "technicians", tid));
-      const nombre = snap.exists() ? (snap.data()?.nombre || tid) : tid;
-      setTechNames(prev => ({ ...prev, [tid]: nombre }));
-    } catch {
-      setTechNames(prev => ({ ...prev, [tid]: tid }));
-    } finally {
-      loadingTidsRef.current.delete(tid);
-    }
-  }
+  useEffect(() => {
+    if (!uid) return;
+    return subscribeClientPayments(uid, setPayments);
+  }, [uid]);
 
-  // separa próximas e historial comparando scheduledAt con ahora
+  useEffect(() => {
+    const missing = [...new Set(items.map((r) => r.technicianId).filter(Boolean))].filter(
+      (tid) => !(tid in techInfo) && !loadingRef.current.has(tid)
+    );
+    missing.forEach(async (tid) => {
+      loadingRef.current.add(tid);
+      try {
+        const snap = await getDoc(doc(db, "technicians", tid));
+        const d = snap.exists() ? snap.data() : {};
+        setTechInfo((prev) => ({ ...prev, [tid]: { nombre: d.nombre, telefono: d.telefono, uid: d.uid, slug: d.slug } }));
+      } catch {
+        setTechInfo((prev) => ({ ...prev, [tid]: {} }));
+      } finally {
+        loadingRef.current.delete(tid);
+      }
+    });
+  }, [items, techInfo]);
+
   const upcoming = useMemo(
-    () => items.filter(r => !isPastTs(r.scheduledAt) && r.status !== "cancelada"),
+    () => items.filter((r) => !isPast(r.scheduledAt) && normalizeBookingStatus(r.status) !== "cancelada"),
     [items]
   );
   const past = useMemo(
-    () => items.filter(r => isPastTs(r.scheduledAt) || r.status === "cancelada"),
+    () => items.filter((r) => isPast(r.scheduledAt) || normalizeBookingStatus(r.status) === "cancelada").reverse(),
     [items]
   );
-
-  const gUpcoming = useMemo(() => groupByDate(upcoming), [upcoming]);
-  const gPast = useMemo(() => groupByDate(past), [past]);
-
-  if (!uid) return <p className="p-6">Debes iniciar sesión.</p>;
-  if (loading) return <p className="p-6">Cargando tus reservas…</p>;
-  if (err) return <p className="p-6 text-red-600">{err}</p>;
+  const summary = useMemo(() => summarizeClientPayments(payments), [payments]);
+  const reviewable = useMemo(
+    () => past.filter((r) => normalizeBookingStatus(r.status) !== "cancelada" && r.paymentStatus === "paid"),
+    [past]
+  );
 
   const handlePaymentClick = async (booking) => {
+    setPayErr("");
     try {
-      console.log("🔍 Buscando pago para booking ID:", booking.id);
-      const payment = await getPaymentByBookingId(booking.id);
-      console.log("💰 Pago encontrado:", payment);
-      if (payment) {
-        setSelectedPayment(payment);
-        setShowPaymentModal(true);
-      } else {
-        console.warn("⚠️ No se encontró pago para esta reserva. ID:", booking.id);
-        alert("No se encontró el registro de pago. Por favor intenta más tarde.");
-      }
+      setSelectedPayment(await getOrCreatePaymentForBooking(booking));
     } catch (error) {
-      console.error("❌ Error obteniendo pago:", error);
-      alert("Error al cargar el pago: " + error.message);
+      console.error("Error obteniendo pago:", error);
+      setPayErr("No pudimos cargar el pago de esta reserva. Intenta de nuevo en unos minutos.");
     }
   };
 
+  if (loading) return <Loader label="Cargando tus reservas…" />;
+
+  const list = tab === "proximas" ? upcoming : past;
+
   return (
-    <div className="max-w-4xl mx-auto p-4">
-      <header className="mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold">Mis reservas</h1>
-          <p className="text-sm text-gray-600 mt-1">Revisa tus próximas reservas y el historial. Pulsa una reserva para ver más detalles.</p>
+    <div>
+      <PageHeader
+        title="Mis reservas"
+        subtitle="Tus visitas próximas y el historial"
+        actions={<Button to="/tecnicos"><CalendarPlus className="h-4 w-4" aria-hidden="true" /> Nueva reserva</Button>}
+      />
+
+      {flash && <Alert tone="success" className="mb-4" onClose={() => setFlash("")}>{flash}</Alert>}
+      {payErr && <Alert tone="danger" className="mb-4" onClose={() => setPayErr("")}>{payErr}</Alert>}
+      {err && <Alert tone="danger" className="mb-4">{err}</Alert>}
+
+      <div className="flex flex-wrap items-start gap-5">
+        <div className="min-w-0 flex-[999_1_480px]">
+          <Segmented
+            label="Reservas"
+            value={tab}
+            onChange={setTab}
+            items={[
+              { value: "proximas", label: `Próximas · ${upcoming.length}` },
+              { value: "historial", label: `Historial · ${past.length}` },
+            ]}
+          />
+
+          {list.length === 0 ? (
+            <EmptyState
+              className="mt-3.5"
+              icon={CalendarX2}
+              title={tab === "proximas" ? "No tienes reservas próximas" : "Aún no tienes historial"}
+              text={tab === "proximas" ? "Busca un técnico y reserva una hora en su agenda." : "Aquí verás tus visitas pasadas."}
+              action={tab === "proximas" && <Button to="/tecnicos">Buscar técnico</Button>}
+            />
+          ) : (
+            <ul className="mt-3.5 flex flex-col gap-3">
+              {list.map((r) => (
+                <BookingRow
+                  key={r.id}
+                  r={r}
+                  tech={techInfo[r.technicianId] || {}}
+                  onPay={() => handlePaymentClick(r)}
+                  onReview={() => setReviewTech({ id: r.technicianId, nombre: r.technicianName || techInfo[r.technicianId]?.nombre })}
+                />
+              ))}
+            </ul>
+          )}
         </div>
 
-        <div className="flex gap-3">
-          <div className="px-4 py-2 rounded-lg bg-white border shadow-sm text-sm text-center">
-            <div className="text-xs text-gray-500">Próximas</div>
-            <div className="font-semibold text-gray-900">{upcoming.length}</div>
-          </div>
-          <div className="px-4 py-2 rounded-lg bg-white border shadow-sm text-sm text-center">
-            <div className="text-xs text-gray-500">Historial</div>
-            <div className="font-semibold text-gray-900">{past.length}</div>
-          </div>
-        </div>
-      </header>
+        <aside className="flex w-full flex-[1_1_260px] flex-col gap-3 lg:max-w-[300px]">
+          <Card className="p-5">
+            <CardTitle className="mb-3">Resumen de pagos</CardTitle>
+            <dl className="text-sm">
+              <div className="flex justify-between border-t border-[#F0F0F3] py-2.5"><dt className="text-muted">Pendiente o en revisión</dt><dd className="font-semibold">{formatCOP(summary.pending)}</dd></div>
+              <div className="flex justify-between border-t border-[#F0F0F3] py-2.5"><dt className="text-muted">Pagado</dt><dd className="font-semibold">{formatCOP(summary.paid)}</dd></div>
+            </dl>
+            <Link to="/pagos" className="mt-2 inline-block text-[13px] font-medium text-brand-ink hover:underline">Ver todos los pagos →</Link>
+          </Card>
+          {reviewable.length > 0 && (
+            <div className="rounded-2xl bg-brand-tint p-5">
+              <h2 className="text-[15px] font-semibold">¿Cómo te fue?</h2>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-[#3F3F46]">Deja una reseña: ayuda a otros vecinos a elegir bien.</p>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="mt-3 border-0 text-brand-ink"
+                onClick={() => setReviewTech({ id: reviewable[0].technicianId, nombre: reviewable[0].technicianName || techInfo[reviewable[0].technicianId]?.nombre })}
+              >
+                <Star className="h-4 w-4" aria-hidden="true" /> Calificar a {reviewable[0].technicianName || "tu técnico"}
+              </Button>
+            </div>
+          )}
+        </aside>
+      </div>
 
-      {/* Calendario */}
-      <CalendarioReservas reservas={items} />
-
-      {/* Próximas */}
-      <Section title="Próximas" groups={gUpcoming} techNames={techNames} emptyText="No tienes reservas próximas." onPaymentClick={handlePaymentClick} />
-
-      {/* Historial */}
-      <Section title="Historial" groups={gPast} techNames={techNames} emptyText="Aún no tienes historial." onPaymentClick={handlePaymentClick} />
-
-      {/* Payment Modal */}
-      {selectedPayment && (
-        <PaymentModal
-          isOpen={showPaymentModal}
-          onClose={() => {
-            setShowPaymentModal(false);
-            setSelectedPayment(null);
-          }}
-          payment={selectedPayment}
-          onPaymentSuccess={() => {
-            // Refresh reservas
-            setItems([]);
-          }}
-        />
-      )}
+      <PaymentModal isOpen={!!selectedPayment} payment={selectedPayment} onClose={() => setSelectedPayment(null)} />
+      <ReviewModal
+        isOpen={!!reviewTech}
+        onClose={() => setReviewTech(null)}
+        technician={reviewTech}
+        userId={uid}
+        userName={profile?.name || user?.displayName}
+      />
     </div>
   );
 }
 
-// helper: obtener iniciales (para avatar)
-function getInitials(name = "") {
-  const parts = String(name).trim().split(/\s+/).filter(Boolean);
-  if (!parts.length) return "??";
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
+function BookingRow({ r, tech, onPay, onReview }) {
+  const d = toDate(r.scheduledAt);
+  const status = bookingStatusMeta(r.status);
+  const pay = paymentStatusMeta(r.paymentStatus);
+  const nombre = r.technicianName || tech.nombre || "Técnico";
+  const cancelada = normalizeBookingStatus(r.status) === "cancelada";
+  const canPay = !cancelada && (!r.paymentStatus || r.paymentStatus === "pending");
+  const canReview = !cancelada && isPast(r.scheduledAt) && r.paymentStatus === "paid";
+  const phone = String(tech.telefono || "").replace(/\D/g, "");
+  const chatUid = tech.uid || r.technicianId;
+  const isToday = d && dayjs(d).isSame(dayjs(), "day");
 
-// helper: extrae dígitos para enlaces tel/wa
-function phoneDigits(raw = "") {
-  return String(raw || "").replace(/\D/g, "");
-}
-
-function Section({ title, groups, techNames, emptyText, onPaymentClick }) {
   return (
-    <section className="mb-8">
-      <h2 className="text-xl font-semibold mb-3">{title}</h2>
-
-      {groups.length === 0 && <p className="text-gray-600">{emptyText}</p>}
-
-      {groups.map(([fecha, rows]) => (
-        <div key={fecha} className="mb-6">
-          <h3 className="text-lg font-medium mb-2">{dayjs(fecha).format("dddd, DD MMM YYYY")}</h3>
-
-          <ul className="space-y-3">
-            {rows.map(r => {
-              const labelTec = r.technicianName || techNames[r.technicianId] || r.technicianId;
-              const whenStr = fmtDateTime(r.scheduledAt);
-              const shortTime = dayjs(r.scheduledAt?.toDate?.()).format("HH:mm");
-              const status = humanStatus(r.status);
-              const phone = phoneDigits(r.technicianPhone || r.technicianTelefono || "");
-              const isPending = r.paymentStatus === "pending";
-
-              return (
-                <li key={r.id} className="bg-white rounded-lg border p-4 flex items-start gap-4 shadow-sm hover:shadow-md transition">
-                  {/* avatar + hora */}
-                  <div className="w-24 flex flex-col items-center text-center">
-                    <div className="w-14 h-14 rounded-full bg-emerald-50 text-emerald-700 font-semibold flex items-center justify-center text-lg">
-                      {getInitials(labelTec)}
-                    </div>
-                    <div className="mt-2 text-xs text-gray-500">{shortTime}</div>
-                  </div>
-
-                    {/* detalles */}
-                  <div className="flex-1">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <div className="font-medium text-gray-900">{labelTec}</div>
-                        <div className="text-sm text-gray-500 mt-1">{whenStr}</div>
-                      </div>
-
-                      <div className="ml-4 flex flex-col gap-2">
-                        <StatusBadge status={status.badge} />
-                        <PaymentBadge paymentStatus={r.paymentStatus} />
-                      </div>
-                    </div>
-                    {r.description && <div className="text-sm text-gray-600 mt-3">Nota: {r.description}</div>}
-                    {r.address && <div className="text-xs text-gray-400 mt-2">{r.address}</div>}
-                  </div>
-
-                  {/* acciones */}
-                  <div className="flex flex-col items-end gap-2">
-                    {isPending && (
-                      <button
-                        onClick={() => onPaymentClick?.(r)}
-                        className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-yellow-50 text-yellow-700 border border-yellow-200 text-sm hover:bg-yellow-100 transition"
-                        title="Registrar pago"
-                      >
-                        <CreditCard className="w-4 h-4" /> Pagar
-                      </button>
-                    )}
-
-                    <Link
-                      to={`/chat/${r.technicianId}/${encodeURIComponent(techNames[r.technicianId] || 'Técnico')}`}
-                      className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-sm hover:bg-blue-100 transition"
-                      title="Enviar mensaje"
-                    >
-                      <MessageSquare className="w-4 h-4" /> Mensaje
-                    </Link>
-
-                    {phone ? (
-                      <a
-                        href={`https://wa.me/${phone}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border text-sm"
-                        title="Contactar por WhatsApp"
-                      >
-                        <Phone className="w-4 h-4" /> WhatsApp
-                      </a>
-                    ) : (
-                      <button className="inline-flex items-center gap-2 px-3 py-1 rounded-full border text-sm text-gray-500" disabled>
-                        <XCircle className="w-4 h-4" /> Sin contacto
-                      </button>
-                    )}
-
-                    <button
-                      type="button"
-                      className="text-sm px-3 py-1 rounded-md border bg-white hover:bg-gray-50"
-                      onClick={() => { /* puedes abrir modal/detalle aquí */ }}
-                    >
-                      Ver detalle
-                    </button>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
+    <li className="flex flex-wrap items-center gap-4 rounded-2xl border border-line bg-white p-4">
+      <div className={cx("w-16 shrink-0 rounded-xl py-2 text-center", isToday ? "bg-brand-soft text-brand-ink" : "bg-[#F4F4F5]")}>
+        <p className="text-xs uppercase">{d ? dayjs(d).format("ddd").replace(".", "") : "—"}</p>
+        <p className="text-[22px] font-bold leading-tight">{d ? dayjs(d).format("D") : ""}</p>
+        <p className="text-[11px]">{d ? dayjs(d).format("MMM").replace(".", "") : ""}</p>
+      </div>
+      <div className="min-w-[200px] flex-1">
+        <div className="mb-1.5 flex flex-wrap gap-1.5">
+          <Badge tone={status.tone}>{status.label}</Badge>
+          {!cancelada && <Badge tone={pay.tone}>{pay.label}</Badge>}
         </div>
-      ))}
-    </section>
+        <h3 className="text-base font-semibold">{r.serviceName || r.description?.slice(0, 60) || "Visita técnica"}</h3>
+        <p className="mt-1 text-[13px] text-muted">
+          {[d ? dayjs(d).format("h:mm a") : null, nombre, Number(r.amount) > 0 ? formatCOP(r.amount) : null].filter(Boolean).join(" · ")}
+        </p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {canPay && <Button size="sm" onClick={onPay}>Registrar pago</Button>}
+        {canReview && <Button size="sm" variant="soft" onClick={onReview}><Star className="h-4 w-4" aria-hidden="true" /> Calificar</Button>}
+        {!cancelada && (
+          <Button size="sm" variant="secondary" to={`/chat/${chatUid}/${encodeURIComponent(nombre)}`}>
+            <MessageCircle className="h-4 w-4" aria-hidden="true" /> Mensaje
+          </Button>
+        )}
+        {phone && !cancelada && (
+          <Button size="sm" variant="secondary" href={`https://wa.me/${phone}`} target="_blank" rel="noreferrer">
+            <Phone className="h-4 w-4" aria-hidden="true" /> WhatsApp
+          </Button>
+        )}
+        {(r.technicianSlug || tech.slug) && (
+          <Button size="sm" variant="ghost" to={`/tecnicos/${r.technicianSlug || tech.slug}`}>Ver técnico</Button>
+        )}
+      </div>
+    </li>
   );
-}
-
-// StatusBadge (ligero ajuste visual con icono)
-function StatusBadge({ status }) {
-  const map = {
-    confirmed: { cls: "bg-emerald-100 text-emerald-800", icon: "✓", label: "Confirmada" },
-    cancelled: { cls: "bg-rose-100 text-rose-800", icon: "✕", label: "Cancelada" },
-    done: { cls: "bg-sky-100 text-sky-800", icon: "✔", label: "Completada" },
-    pending: { cls: "bg-gray-100 text-gray-700", icon: "…", label: "Solicitada" },
-  };
-  const meta = map[status] || map.pending;
-  return (
-    <span className={`inline-flex items-center gap-2 text-xs uppercase tracking-wide px-2 py-1 rounded ${meta.cls}`}>
-      <span className="text-[11px] font-medium">{meta.icon}</span>
-      <span>{meta.label}</span>
-    </span>
-  );
-}
-
-// PaymentBadge - Muestra el estado de pago
-function PaymentBadge({ paymentStatus }) {
-  const map = {
-    pending: { cls: "bg-yellow-100 text-yellow-800", icon: "⏳", label: "Pago pendiente" },
-    paid: { cls: "bg-emerald-100 text-emerald-800", icon: "✓", label: "Pagado" },
-    failed: { cls: "bg-red-100 text-red-800", icon: "✕", label: "Pago fallido" },
-    refunded: { cls: "bg-blue-100 text-blue-800", icon: "↶", label: "Reembolsado" },
-  };
-  const meta = map[paymentStatus] || map.pending;
-  return (
-    <span className={`inline-flex items-center gap-2 text-xs uppercase tracking-wide px-2 py-1 rounded ${meta.cls}`}>
-      <span className="text-[11px] font-medium">{meta.icon}</span>
-      <span>{meta.label}</span>
-    </span>
-  );
-}
-
-function fmtDateTime(ts) {
-  try {
-    const d = ts?.toDate?.();
-    return d ? dayjs(d).format("DD/MM/YYYY HH:mm") : "—";
-  } catch {
-    return "—";
-  }
-}
-
-function humanStatus(raw) {
-  const v = (raw || "").toLowerCase();
-  if (v === "solicitada") return { badge: "pending", label: "Solicitada" };
-  if (v === "confirmada" || v === "confirmed") return { badge: "confirmed", label: "Confirmada" };
-  if (v === "cancelada" || v === "cancelled") return { badge: "cancelled", label: "Cancelada" };
-  if (v === "completada" || v === "completed") return { badge: "done", label: "Completada" };
-  return { badge: "pending", label: v || "Solicitada" };
 }

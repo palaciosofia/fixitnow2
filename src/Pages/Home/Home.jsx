@@ -1,238 +1,234 @@
 // src/Pages/Home/Home.jsx
-import { useEffect, useMemo, useState } from "react";
-import { useSearchParams, Link } from "react-router-dom";
-
-// Secciones comunes (capa base)
-import Hero from "../../Components/Common/Hero";
-import HowItWorks from "../../Components/Common/HowItWorks";
-import Benefits from "../../Components/Common/Benefits";
-import ReviewsStrip from "../../Components/Common/ReviewsStrip";
-import CatalogGrid from "../../Components/Common/Catalog/CatalogGrid";
-import SectionTitle from "../../Components/SectionTitle/SectionTitle";
-
-// Iconos
-import { ArrowRight, Search, Star, Users, Zap, Shield } from "lucide-react";
-
-// Lecturas centralizadas
-import {
-  fetchPublicTechniciansPreview, 
-  fetchPublicReviewsStrip,
-} from "../../services/publicData";
+// Página de inicio pública.
+import { useEffect, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { ArrowRight, Search, Star, CalendarCheck, Wallet } from "lucide-react";
+import TechnicianCard from "../../Components/Common/Catalog/TechnicianCard";
+import { Avatar, Badge, Button, Rating } from "../../ui";
+import { specialtyVisual } from "../../ui/specialty";
+import { fetchPublicTechniciansPreview, fetchPublicReviewsStrip } from "../../services/publicData";
+import { ESPECIALIDADES_DESTACADAS, ESPECIALIDADES } from "../../utils/catalog";
+import { cx } from "../../ui/cx";
 
 export default function Home() {
-  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const [q, setQ] = useState("");
+  const [esp, setEsp] = useState("");
 
-  // Query pública: ?q= (búsqueda libre) y ?esp= (especialidad)
-  const q = (searchParams.get("q") || "").trim();
-  const esp = (searchParams.get("esp") || "").trim();
-
-  // Estado catálogo
   const [techs, setTechs] = useState([]);
   const [loadingTechs, setLoadingTechs] = useState(true);
   const [errorTechs, setErrorTechs] = useState("");
-
-  // Estado reseñas
   const [reviews, setReviews] = useState([]);
-  const [loadingReviews, setLoadingReviews] = useState(true);
 
-  // Filtros server-side (especialidad) + client-side (q)
   useEffect(() => {
     let mounted = true;
-    (async () => {
-      setLoadingTechs(true);
-      setErrorTechs("");
-      try {
-        // Solo 6 para el preview de Home
-        const data = await fetchPublicTechniciansPreview({
-          especialidad: esp || undefined,
-        });
-        if (!mounted) return;
-
-        // Si hay q, filtramos client-side por nombre, ciudad y especialidades
-        const filtered = q
-          ? data.filter((t) => {
-              const norm = (s) => (s || "").toString().toLowerCase();
-              const qq = norm(q);
-              const nombre = norm(t.nombre);
-              const ciudad = norm(t.ciudad);
-              const especs = (t.especialidades || []).map(norm).join(" ");
-              return (
-                nombre.includes(qq) ||
-                ciudad.includes(qq) ||
-                especs.includes(qq)
-              );
-            })
-          : data;
-
-        setTechs(filtered);
-      } catch (err) {
+    fetchPublicTechniciansPreview()
+      .then((data) => mounted && setTechs(data))
+      .catch((err) => {
         console.error(err);
-        setErrorTechs("No pudimos cargar el catálogo por ahora.");
-      } finally {
-        if (mounted) setLoadingTechs(false);
-      }
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, [q, esp]);
+        if (mounted) setErrorTechs("No pudimos cargar los técnicos por ahora.");
+      })
+      .finally(() => mounted && setLoadingTechs(false));
 
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      setLoadingReviews(true);
-      try {
-        const r = await fetchPublicReviewsStrip({ take: 6 });
-        if (mounted) setReviews(r);
-      } finally {
-        if (mounted) setLoadingReviews(false);
-      }
-    })();
+    fetchPublicReviewsStrip({ take: 3 })
+      .then((r) => mounted && setReviews(r))
+      .catch(() => {});
     return () => {
       mounted = false;
     };
   }, []);
 
-  // Texto del subtítulo del catálogo (ayuda al usuario)
-  const catalogSubtitle = useMemo(() => {
-    if (esp && q) return `Filtrado por especialidad: “${esp}” y búsqueda: “${q}”`;
-    if (esp) return `Filtrado por especialidad: “${esp}”`;
-    if (q) return `Resultados para: “${q}”`;
-    return "Explora técnicos disponibles por ciudad y especialidad";
-  }, [esp, q]);
+  const onSearch = (e) => {
+    e.preventDefault();
+    const params = new URLSearchParams();
+    if (q.trim()) params.set("q", q.trim());
+    if (esp) params.set("esp", esp);
+    navigate(`/tecnicos${params.toString() ? `?${params}` : ""}`);
+  };
+
+  const destacado = techs[0];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
-      {/* HERO / Promesa y CTA */}
-      <Hero />
-    
+    <>
+      {/* Hero */}
+      <section className="mx-auto flex max-w-[1200px] flex-wrap items-center gap-10 px-4 pb-10 pt-12 sm:px-6 md:pt-16">
+        <div className="min-w-0 flex-[1_1_460px]">
+          <Badge tone="brand" className="px-3 py-1.5 text-[13px]">Técnicos verificados en Barranquilla</Badge>
+          <h1 className="mt-5 text-4xl font-semibold leading-[1.05] tracking-[-0.035em] sm:text-[52px]">
+            Arreglos en casa con técnicos de confianza
+          </h1>
+          <p className="mt-4 max-w-[520px] text-[17px] leading-relaxed text-muted">
+            Mira precios y reseñas, elige una hora en la agenda del técnico y paga cuando el trabajo esté hecho.
+          </p>
 
-      {/* CATÁLOGO PREMIUM (ancla para navbar/hero) */}
-      <section id="catalogo" className="relative py-12 overflow-hidden">
-        {/* Elementos decorativos de fondo */}
-        <div className="absolute inset-0 overflow-hidden">
-          <div className="absolute top-20 left-20 w-64 h-64 bg-emerald-200/20 rounded-full blur-3xl"></div>
-          <div className="absolute bottom-20 right-20 w-80 h-80 bg-blue-200/20 rounded-full blur-3xl"></div>
-          <div className="absolute top-1/2 left-1/3 w-48 h-48 bg-purple-200/20 rounded-full blur-2xl"></div>
+          <form
+            role="search"
+            onSubmit={onSearch}
+            className="mt-7 flex flex-wrap gap-2 rounded-2xl border border-line bg-white p-2 shadow-[0_8px_24px_rgba(22,21,28,0.06)]"
+          >
+            <label className="flex min-w-[200px] flex-[2_1_200px] flex-col px-2.5 py-1.5 text-[11px] text-subtle">
+              ¿Qué necesitas?
+              <input
+                type="text"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Ej: fuga en el lavaplatos"
+                className="bg-transparent pt-0.5 text-[15px] text-ink outline-none placeholder:text-subtle"
+              />
+            </label>
+            <label className="flex min-w-[150px] flex-[1_1_150px] flex-col border-line px-2.5 py-1.5 text-[11px] text-subtle sm:border-l">
+              Especialidad
+              <select
+                value={esp}
+                onChange={(e) => setEsp(e.target.value)}
+                className="bg-transparent pt-0.5 text-[15px] text-ink outline-none"
+              >
+                <option value="">Todas</option>
+                {ESPECIALIDADES.map((e) => (
+                  <option key={e} value={e}>{e}</option>
+                ))}
+              </select>
+            </label>
+            <Button type="submit" size="lg" className="min-h-[52px] flex-none">
+              <Search className="h-4 w-4" aria-hidden="true" /> Buscar técnico
+            </Button>
+          </form>
         </div>
 
-        <div className="container mx-auto px-4 relative z-10">
-          {/* Header espectacular con SectionTitle */}
-          <div className="mb-16">
-            <SectionTitle 
-              title="Técnicos Disponibles" 
-              subtitle={catalogSubtitle}
-              variant="elegant"
-              icon="star"
-              textAlign="center"
-              mb="mb-0"
-            />
+        {/* Visual */}
+        <div className="relative hidden min-h-[400px] flex-[1_1_420px] md:block" aria-hidden="true">
+          <div className={cx("absolute left-0 top-0 flex h-[300px] w-[62%] items-center justify-center rounded-[20px]", specialtyVisual("Plomería").cls)}>
+            <HeroIcon name="Plomería" size={72} />
           </div>
-
-          {/* Estadísticas rápidas */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-16">
-            <div className="bg-white/80 backdrop-blur-sm rounded-3xl p-6 border border-white/20 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2">
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl flex items-center justify-center">
-                  <Users className="w-7 h-7 text-white" />
-                </div>
-                <div>
-                  <div className="text-3xl font-black text-gray-900" style={{fontFamily: 'Space Grotesk, sans-serif'}}>500+</div>
-                  <div className="text-sm text-gray-600 font-medium">Técnicos Expertos</div>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white/80 backdrop-blur-sm rounded-3xl p-6 border border-white/20 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2">
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-2xl flex items-center justify-center">
-                  <Star className="w-7 h-7 text-white" />
-                </div>
-                <div>
-                  <div className="text-3xl font-black text-gray-900" style={{fontFamily: 'Space Grotesk, sans-serif'}}>4.9/5</div>
-                  <div className="text-sm text-gray-600 font-medium">Calificación</div>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white/80 backdrop-blur-sm rounded-3xl p-6 border border-white/20 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2">
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 bg-gradient-to-br from-purple-500 to-violet-600 rounded-2xl flex items-center justify-center">
-                  <Zap className="w-7 h-7 text-white" />
-                </div>
-                <div>
-                  <div className="text-3xl font-black text-gray-900" style={{fontFamily: 'Space Grotesk, sans-serif'}}>24/7</div>
-                  <div className="text-sm text-gray-600 font-medium">Disponibilidad</div>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white/80 backdrop-blur-sm rounded-3xl p-6 border border-white/20 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2">
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 bg-gradient-to-br from-orange-500 to-red-600 rounded-2xl flex items-center justify-center">
-                  <Shield className="w-7 h-7 text-white" />
-                </div>
-                <div>
-                  <div className="text-3xl font-black text-gray-900" style={{fontFamily: 'Space Grotesk, sans-serif'}}>100%</div>
-                  <div className="text-sm text-gray-600 font-medium">Garantía</div>
-                </div>
-              </div>
-            </div>
+          <div className={cx("absolute right-0 top-[60px] flex h-[220px] w-[42%] items-center justify-center rounded-[20px]", specialtyVisual("Electricidad").cls)}>
+            <HeroIcon name="Electricidad" size={60} />
           </div>
-
-          {/* Contenido del catálogo */}
-          {errorTechs ? (
-            <div className="bg-white rounded-3xl shadow-2xl border-2 border-red-200 p-8 mb-8">
-              <div className="flex items-center gap-4 mb-4">
-                <div className="w-12 h-12 bg-red-100 rounded-2xl flex items-center justify-center">
-                  <span className="text-red-600 text-xl">⚠️</span>
-                </div>
-                <div>
-                  <h3 className="text-xl font-bold text-red-800">Error al cargar técnicos</h3>
-                  <p className="text-red-600">{errorTechs}</p>
-                </div>
+          {destacado && (
+            <div className="absolute bottom-0 left-[18%] flex w-[290px] items-center gap-3 rounded-2xl border border-line bg-white p-3.5 shadow-[0_12px_32px_rgba(22,21,28,0.10)]">
+              <Avatar name={destacado.nombre} src={destacado.fotoURL} size={44} />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold">{destacado.nombre}</p>
+                <p className="mt-0.5 flex items-center gap-1 text-xs text-muted">
+                  {(destacado.especialidades || [])[0] || "Técnico"} · <Rating value={destacado.ratingPromedio} />
+                </p>
               </div>
+              <Badge tone="success">Disponible</Badge>
             </div>
-          ) : (
-            <>
-              {/* Grid mejorado con container */}
-              <div className="bg-white/60 backdrop-blur-sm rounded-3xl p-8 border border-white/20 shadow-2xl mb-6">
-                <CatalogGrid data={techs} loading={loadingTechs} />
-              </div>
-
-              {/* Botón Ver más espectacular */}
-              <div className="flex justify-center">
-                <Link 
-                  to="/catalogo" 
-                  className="group relative px-10 py-5 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-700 hover:via-teal-700 hover:to-cyan-700 text-white font-bold text-lg rounded-2xl shadow-2xl hover:shadow-emerald-500/25 transition-all duration-300 transform hover:scale-105 overflow-hidden"
-                >
-                  <span className="relative z-10 flex items-center gap-3">
-                    <Search className="w-6 h-6" />
-                    Explorar Todos los Técnicos
-                    <ArrowRight className="w-6 h-6 group-hover:translate-x-1 transition-transform" />
-                  </span>
-                  <div className="absolute inset-0 bg-gradient-to-r from-white/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                </Link>
-              </div>
-            </>
           )}
         </div>
       </section>
 
-      {/* CÓMO FUNCIONA con mejor spacing */}
-      <section className="py-12">
-        <HowItWorks />
+      {/* Especialidades */}
+      <section aria-labelledby="h-esp" className="mx-auto max-w-[1200px] px-4 py-8 sm:px-6">
+        <h2 id="h-esp" className="text-2xl font-semibold">¿Qué necesitas arreglar?</h2>
+        <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {ESPECIALIDADES_DESTACADAS.map((e) => {
+            const v = specialtyVisual(e);
+            const Icon = v.icon;
+            return (
+              <Link
+                key={e}
+                to={`/tecnicos?esp=${encodeURIComponent(e)}`}
+                className="flex items-center gap-3 rounded-[14px] border border-line p-4 transition-colors hover:border-brand hover:bg-brand-tint"
+              >
+                <span className={cx("flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px]", v.cls)}>
+                  <Icon className="h-5 w-5" strokeWidth={1.8} aria-hidden="true" />
+                </span>
+                <span className="text-[15px] font-semibold">{e}</span>
+              </Link>
+            );
+          })}
+        </div>
       </section>
 
-      {/* BENEFICIOS con mejor spacing */}
-      <section className="py-12">
-        <Benefits />
+      {/* Destacados */}
+      <section aria-labelledby="h-dest" className="mx-auto max-w-[1200px] px-4 pb-12 pt-6 sm:px-6">
+        <div className="flex items-baseline justify-between gap-4">
+          <h2 id="h-dest" className="text-2xl font-semibold">Mejor calificados</h2>
+          <Link to="/tecnicos" className="flex items-center gap-1 text-sm font-medium text-brand-ink hover:underline">
+            Ver todos <ArrowRight className="h-4 w-4" aria-hidden="true" />
+          </Link>
+        </div>
+        {errorTechs ? (
+          <p className="mt-5 text-sm text-bad">{errorTechs}</p>
+        ) : loadingTechs ? (
+          <div className="mt-5 grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-4" aria-hidden="true">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="h-[290px] animate-pulse rounded-[14px] bg-canvas" />
+            ))}
+          </div>
+        ) : techs.length === 0 ? (
+          <p className="mt-5 text-sm text-muted">Pronto verás aquí a los técnicos publicados.</p>
+        ) : (
+          <div className="mt-5 grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-4">
+            {techs.slice(0, 4).map((t) => (
+              <TechnicianCard key={t.id} t={t} />
+            ))}
+          </div>
+        )}
       </section>
 
-      {/* RESEÑAS con mejor spacing */}
-      <section className="py-12">
-        <ReviewsStrip data={reviews} loading={loadingReviews} />
+      {/* Cómo funciona */}
+      <section id="como-funciona" aria-labelledby="h-como" className="border-y border-line bg-canvas">
+        <div className="mx-auto max-w-[1200px] px-4 py-12 sm:px-6">
+          <h2 id="h-como" className="text-2xl font-semibold">Cómo funciona</h2>
+          <ol className="mt-5 grid gap-4 md:grid-cols-3">
+            {[
+              { icon: Search, t: "Compara técnicos", d: "Precios, zonas y reseñas de otros clientes antes de decidir." },
+              { icon: CalendarCheck, t: "Reserva una hora", d: "Eliges en su agenda real y le escribes por chat si tienes dudas." },
+              { icon: Wallet, t: "Paga y califica", d: "Registras el pago cuando el trabajo queda listo y dejas tu reseña." },
+            ].map((s, i) => (
+              <li key={s.t} className="rounded-[14px] border border-line bg-white p-5">
+                <span className="flex items-center gap-2 text-[13px] font-semibold text-brand-ink">
+                  <s.icon className="h-4 w-4" aria-hidden="true" /> Paso {i + 1}
+                </span>
+                <p className="mt-2 text-[17px] font-semibold">{s.t}</p>
+                <p className="mt-1.5 text-sm leading-relaxed text-muted">{s.d}</p>
+              </li>
+            ))}
+          </ol>
+        </div>
       </section>
-    </div>
+
+      {/* Reseñas destacadas (solo si hay aprobadas) */}
+      {reviews.length > 0 && (
+        <section aria-labelledby="h-res" className="mx-auto max-w-[1200px] px-4 pt-12 sm:px-6">
+          <h2 id="h-res" className="text-2xl font-semibold">Lo que dicen los clientes</h2>
+          <div className="mt-5 grid gap-4 md:grid-cols-3">
+            {reviews.map((r) => (
+              <figure key={r.id} className="rounded-[14px] border border-line bg-white p-5">
+                <div className="flex gap-0.5" aria-label={`${r.rating || 5} de 5 estrellas`}>
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <Star key={i} className={cx("h-4 w-4", i < (r.rating || 5) ? "fill-star text-star" : "text-line")} aria-hidden="true" />
+                  ))}
+                </div>
+                <blockquote className="mt-3 text-sm leading-relaxed text-ink">{r.comentario || r.comment}</blockquote>
+                <figcaption className="mt-3 text-xs text-muted">{r.clienteNombre || r.clientName || "Cliente"}</figcaption>
+              </figure>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Para técnicos */}
+      <section className="mx-auto max-w-[1200px] px-4 py-12 sm:px-6">
+        <div className="flex flex-wrap items-center justify-between gap-6 rounded-[20px] bg-ink p-8 text-white sm:p-9">
+          <div className="max-w-[560px]">
+            <h2 className="text-[28px] font-semibold">¿Eres técnico? Consigue clientes en tu zona</h2>
+            <p className="mt-2.5 text-[15px] leading-relaxed text-[#D4D4D8]">
+              Crea tu perfil gratis, define tus precios y horarios, y recibe reservas directamente en tu agenda.
+            </p>
+          </div>
+          <Link to="/auth/register?rol=tecnico" className="rounded-xl bg-white px-5 py-3.5 text-[15px] font-semibold text-ink hover:bg-brand-soft">
+            Publicar mi perfil
+          </Link>
+        </div>
+      </section>
+    </>
   );
+}
+
+function HeroIcon({ name, size }) {
+  const Icon = specialtyVisual(name).icon;
+  return <Icon style={{ width: size, height: size }} strokeWidth={1.2} />;
 }

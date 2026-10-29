@@ -16,7 +16,57 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 
+import { DEFAULT_HORARIOS, buildSlug } from "./technicians";
+
 export const ROLE_CACHE_KEY = "fixit_role";
+
+/** true si el perfil está bloqueado por un admin (acepta el campo antiguo `bloqueado`). */
+export function isBlockedProfile(profile) {
+  return profile?.blocked === true || profile?.bloqueado === true;
+}
+
+/** Si la cuenta está bloqueada, cierra la sesión y lanza un error legible. */
+async function rejectIfBlocked(profile) {
+  if (isBlockedProfile(profile)) {
+    await signOut(auth);
+    throw new Error("Tu cuenta está bloqueada. Contacta al administrador.");
+  }
+}
+
+/** Datos iniciales del documento /technicians/{uid} */
+function newTechnicianDoc(uid, nombre, ciudad) {
+  return {
+    uid,
+    nombre: nombre || "",
+    slug: buildSlug(nombre || "tecnico", uid),
+    descripcion: "",
+    bioCorta: "",
+    ciudad: ciudad || "",
+    especialidades: [],
+    servicios: [],
+    zonasCobertura: [],
+    aniosExperiencia: 0,
+    tarifaBase: null,
+    disponible: true,
+    horarios: { ...DEFAULT_HORARIOS },
+    excepciones: {},
+    ratingPromedio: 0,
+    reseñasCount: 0,
+    publicado: false,
+    telefono: "",
+    certificaciones: [],
+    disponibilidadTxt: "",
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+}
+
+/** Crea el documento del técnico solo si todavía no existe (nunca sobrescribe un perfil). */
+async function ensureTechnicianDoc(uid, nombre, ciudad) {
+  const ref = doc(db, "technicians", uid);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) await setDoc(ref, newTechnicianDoc(uid, nombre, ciudad));
+}
 
 // Asegura perfil si no existe (para logins normales / Google simple)
 export async function ensureUserProfile(user, extra = {}) {
@@ -59,7 +109,9 @@ export async function registerUser({
   // 2) Nombre visible en Auth
   try {
     if (name) await updateProfile(cred.user, { displayName: name });
-  } catch {}
+  } catch (e) {
+    console.warn("No se pudo guardar el nombre visible:", e?.message);
+  }
 
   // 3) Crear doc en users
   try {
@@ -82,25 +134,7 @@ export async function registerUser({
   // 4) Si es técnico, crear doc en technicians
   if (safeRole === "tecnico") {
     try {
-      const techData = {
-        uid: cred.user.uid,
-        nombre: name ?? "",
-        descripcion: "",
-        ciudad: ciudad ?? "",
-        especialidades: [],
-        aniosExperiencia: 0,
-        tarifaBase: null,
-        disponible: true,
-        horarios: "",
-        ratingPromedio: 0,
-        publicado: false,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      };
-      await setDoc(doc(db, "technicians", cred.user.uid), techData, {
-        merge: true,
-      });
-      console.log("Documento técnico creado:", cred.user.uid);
+      await ensureTechnicianDoc(cred.user.uid, name, ciudad);
     } catch (e) {
       console.warn("No se pudo crear el documento técnico:", e?.message);
     }
@@ -115,7 +149,9 @@ export async function loginUser({ email, password }) {
 
   try {
     await ensureUserProfile(cred.user);
-  } catch {}
+  } catch (e) {
+    console.warn("No se pudo asegurar el perfil:", e?.message);
+  }
 
   let profile = null;
   try {
@@ -124,6 +160,7 @@ export async function loginUser({ email, password }) {
   } catch (e) {
     console.warn("No se pudo leer el perfil en Firestore:", e?.message);
   }
+  await rejectIfBlocked(profile);
   return { user: cred.user, profile };
 }
 
@@ -133,7 +170,9 @@ export async function loginWithGoogle() {
 
   try {
     await ensureUserProfile(cred.user);
-  } catch {}
+  } catch (e) {
+    console.warn("No se pudo asegurar el perfil:", e?.message);
+  }
 
   let profile = null;
   try {
@@ -143,6 +182,7 @@ export async function loginWithGoogle() {
     console.warn("No se pudo leer el perfil en Firestore:", e?.message);
   }
 
+  await rejectIfBlocked(profile);
   return { user: cred.user, profile };
 }
 
@@ -163,6 +203,8 @@ export async function registerWithGoogle({
 
   const userRef = doc(db, "users", gUser.uid);
   const snap = await getDoc(userRef);
+  // Usuario sin rol todavía (p. ej. entró antes con "Iniciar con Google"): puede elegirlo ahora
+  const assignRole = !snap.exists() || !snap.data()?.role;
 
   if (!snap.exists()) {
     // Crear el doc desde cero
@@ -179,39 +221,21 @@ export async function registerWithGoogle({
       updatedAt: serverTimestamp(),
     });
   } else {
-    // Actualizar algunos campos (por si ya existía)
-    await setDoc(
-      userRef,
-      {
-        name: finalName,
-        role: safeRole,
-        ciudad: ciudad ?? null,
-        barrio: barrio ?? null,
-        telefono: telefono ?? null,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
+    // El usuario ya existía: NO se cambia un rol ya asignado (evita que un
+    // técnico/admin quede convertido en cliente). Solo se completan datos que falten.
+    const current = snap.data();
+    const patch = { updatedAt: serverTimestamp() };
+    if (assignRole) patch.role = safeRole;
+    if (!current.name && finalName) patch.name = finalName;
+    if (!current.ciudad && ciudad) patch.ciudad = ciudad;
+    if (!current.barrio && barrio) patch.barrio = barrio;
+    if (!current.telefono && telefono) patch.telefono = telefono;
+    await setDoc(userRef, patch, { merge: true });
   }
 
-  // Si es técnico, crear/actualizar technicians
-  if (safeRole === "tecnico") {
-    const techData = {
-      uid: gUser.uid,
-      nombre: finalName || "",
-      ciudad: ciudad ?? "",
-      descripcion: "",
-      especialidades: [],
-      aniosExperiencia: 0,
-      tarifaBase: null,
-      disponible: true,
-      horarios: "",
-      ratingPromedio: 0,
-      publicado: false,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    };
-    await setDoc(doc(db, "technicians", gUser.uid), techData, { merge: true });
+  // Si se registra como técnico (y no tenía rol), crear su perfil técnico
+  if (safeRole === "tecnico" && assignRole) {
+    await ensureTechnicianDoc(gUser.uid, finalName, ciudad);
   }
 
   // Leer perfil para retornarlo
@@ -223,6 +247,7 @@ export async function registerWithGoogle({
     console.warn("No se pudo leer el perfil en Firestore:", e?.message);
   }
 
+  await rejectIfBlocked(profile);
   return { user: gUser, profile };
 }
 
@@ -233,7 +258,9 @@ export async function logoutUser() {
   await signOut(auth);
   try {
     localStorage.removeItem(ROLE_CACHE_KEY);
-  } catch {}
+  } catch {
+    /* almacenamiento no disponible */
+  }
 }
 
 export async function sendReset(email) {

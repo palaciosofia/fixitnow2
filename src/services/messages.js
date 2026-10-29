@@ -6,7 +6,6 @@ import {
   where,
   orderBy,
   onSnapshot,
-  doc,
   addDoc,
   updateDoc,
   serverTimestamp,
@@ -48,7 +47,7 @@ export async function sendMessage({
   receiverName,
   text,
 }) {
-  if (!text.trim()) {
+  if (!text?.trim()) {
     throw new Error("El mensaje no puede estar vacío");
   }
 
@@ -71,7 +70,6 @@ export async function sendMessage({
       timestamp: serverTimestamp(),
     });
 
-    console.log("✅ Mensaje enviado:", docRef.id);
     return docRef.id;
   } catch (err) {
     console.error("❌ Error enviando mensaje:", err);
@@ -112,84 +110,91 @@ export function subscribeToConversation(userId1, userId2, callback) {
   return unsubscribe;
 }
 
+/** Milisegundos de un Timestamp de Firestore (null mientras el servidor no lo asigna). */
+function tsMillis(ts) {
+  return ts?.toMillis?.() ?? Date.now();
+}
+
 /**
- * Obtiene las últimas conversaciones de un usuario
+ * Obtiene las últimas conversaciones de un usuario (recibidas y enviadas).
+ * Usa dos listeners fijos y combina sus resultados; la función devuelta
+ * cancela ambos.
  * @param {string} userId
  * @param {(conversations: Object[]) => void} callback
  * @returns {Function} Unsubscribe function
  */
 export function subscribeToConversationsList(userId, callback) {
-  const q = query(
-    collection(db, "messages"),
-    where("receiverId", "==", userId),
-    orderBy("timestamp", "desc")
-  );
+  let received = [];
+  let sent = [];
+  let gotReceived = false;
+  let gotSent = false;
 
-  const unsubscribe = onSnapshot(
-    q,
-    (snapshot) => {
-      // Agrupar por conversationId y obtener el último mensaje de cada una
-      const conversationMap = {};
+  const emit = () => {
+    if (!gotReceived || !gotSent) return; // espera la primera respuesta de ambos
+    const map = {};
 
-      snapshot.docs.forEach((doc) => {
-        const data = doc.data();
-        const convId = data.conversationId;
+    const consider = (msg, isReceived) => {
+      const convId = msg.conversationId;
+      const prev = map[convId];
+      const unread = (prev?.unread ?? false) || (isReceived && !msg.read);
+      if (!prev || tsMillis(msg.timestamp) > tsMillis(prev.timestamp)) {
+        map[convId] = {
+          ...msg,
+          id: convId,
+          lastMessage: msg.text,
+          otherUserId: isReceived ? msg.senderId : msg.receiverId,
+          otherUserName: isReceived ? msg.senderName : msg.receiverName,
+          timestamp: msg.timestamp,
+          unread,
+        };
+      } else {
+        prev.unread = unread;
+      }
+    };
 
-        if (!conversationMap[convId] || data.timestamp > conversationMap[convId].timestamp) {
-          conversationMap[convId] = {
-            id: convId,
-            lastMessage: data.text,
-            otherUserId: data.senderId,
-            otherUserName: data.senderName,
-            timestamp: data.timestamp,
-            unread: !data.read,
-            ...data,
-          };
-        }
-      });
+    received.forEach((m) => consider(m, true));
+    sent.forEach((m) => consider(m, false));
 
-      // También obtener conversaciones donde el usuario es el remitente
-      const q2 = query(
-        collection(db, "messages"),
-        where("senderId", "==", userId),
-        orderBy("timestamp", "desc")
-      );
+    const conversations = Object.values(map).sort(
+      (a, b) => tsMillis(b.timestamp) - tsMillis(a.timestamp)
+    );
+    callback(conversations);
+  };
 
-      const unsubscribe2 = onSnapshot(q2, (snapshot2) => {
-        snapshot2.docs.forEach((doc) => {
-          const data = doc.data();
-          const convId = data.conversationId;
+  const onErr = (err) => console.error("Error obteniendo conversaciones:", err);
 
-          if (
-            !conversationMap[convId] ||
-            data.timestamp > conversationMap[convId].timestamp
-          ) {
-            conversationMap[convId] = {
-              id: convId,
-              lastMessage: data.text,
-              otherUserId: data.receiverId,
-              otherUserName: data.receiverName,
-              timestamp: data.timestamp,
-              unread: false,
-              ...data,
-            };
-          }
-        });
-
-        const conversations = Object.values(conversationMap).sort(
-          (a, b) => b.timestamp - a.timestamp
-        );
-        callback(conversations);
-      });
-
-      return () => {
-        unsubscribe();
-        unsubscribe2();
-      };
+  const unsubReceived = onSnapshot(
+    query(collection(db, "messages"), where("receiverId", "==", userId), orderBy("timestamp", "desc")),
+    (snap) => {
+      received = snap.docs.map((d) => d.data());
+      gotReceived = true;
+      emit();
+    },
+    (err) => {
+      onErr(err);
+      gotReceived = true;
+      emit();
     }
   );
 
-  return unsubscribe;
+  const unsubSent = onSnapshot(
+    query(collection(db, "messages"), where("senderId", "==", userId), orderBy("timestamp", "desc")),
+    (snap) => {
+      sent = snap.docs.map((d) => d.data());
+      gotSent = true;
+      emit();
+    },
+    (err) => {
+      onErr(err);
+      gotSent = true;
+      emit();
+    }
+  );
+
+  return () => {
+    unsubReceived();
+    unsubSent();
+  };
 }
 
 /**
@@ -216,7 +221,6 @@ export async function markConversationAsRead(userId1, userId2, currentUserId) {
       updateDoc(doc.ref, { read: true })
     );
     await Promise.all(updates);
-    console.log("✅ Mensajes marcados como leídos");
   } catch (err) {
     console.error("❌ Error marcando como leídos:", err);
   }

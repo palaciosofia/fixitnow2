@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { sendReset } from "../../../services/auth";
+import { Alert, Button, Field, Input, Logo } from "../../../ui";
 
 export default function Forgot() {
   const [email, setEmail] = useState("");
@@ -23,7 +24,7 @@ export default function Forgot() {
       await sendReset(email);
       setMsg("Te enviamos un correo con el enlace para restablecer tu contraseña.");
       setEmail("");
-    } catch (e) {
+    } catch {
       setErr("No pudimos enviar el correo. Verifica el email o intenta más tarde.");
     } finally {
       setLoading(false);
@@ -31,43 +32,27 @@ export default function Forgot() {
   };
 
   return (
-    <div className="max-w-md mx-auto p-6">
-      <h1 className="text-2xl font-semibold mb-2">Restablecer contraseña</h1>
-      <p className="text-sm text-gray-600 mb-4">
-        Ingresa tu correo y te enviaremos un enlace para restablecerla.
-      </p>
+    <div className="flex min-h-screen items-center justify-center bg-canvas px-4 py-10">
+      <main className="w-full max-w-[420px] rounded-[20px] border border-line bg-white p-6 sm:p-8">
+        <Logo compact />
+        <h1 className="mt-5 text-[26px] font-semibold">Restablecer contraseña</h1>
+        <p className="mt-1.5 text-sm text-muted">Te enviamos un enlace a tu correo para crear una nueva.</p>
 
-      <form onSubmit={onSubmit} className="space-y-4" noValidate>
-        <div>
-          <label htmlFor="email" className="block text-sm mb-1">Correo</label>
-          <input
-            id="email"
-            type="email"
-            placeholder="tucorreo@ejemplo.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full border rounded px-3 py-2 outline-none focus:ring-2 focus:ring-black/30"
-            required
-          />
-        </div>
+        <form onSubmit={onSubmit} noValidate className="mt-6 flex flex-col gap-3.5">
+          <Field label="Correo electrónico">
+            {(id) => (
+              <Input id={id} type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="tucorreo@ejemplo.com" />
+            )}
+          </Field>
+          {err && <Alert tone="danger">{err}</Alert>}
+          {msg && <Alert tone="success">{msg}</Alert>}
+          <Button type="submit" size="lg" loading={loading}>Enviar enlace</Button>
+        </form>
 
-        {msg && <div className="text-green-700 text-sm">{msg}</div>}
-        {err && <div className="text-red-600 text-sm">{err}</div>}
-
-        <div className="flex items-center justify-between gap-3">
-          <button
-            type="submit"
-            disabled={loading}
-            className="bg-black text-white rounded px-4 py-2 disabled:opacity-60"
-          >
-            {loading ? "Enviando..." : "Enviar enlace"}
-          </button>
-
-          <Link to="/auth/login" className="text-sm underline text-gray-700 hover:text-black">
-            Volver a iniciar sesión
-          </Link>
-        </div>
-      </form>
+        <p className="mt-6 text-center text-sm text-muted">
+          <Link to="/auth/login" className="font-medium text-brand-ink hover:underline">Volver a iniciar sesión</Link>
+        </p>
+      </main>
     </div>
   );
 }

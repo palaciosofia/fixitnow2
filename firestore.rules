@@ -1,0 +1,203 @@
+rules_version = '2';
+
+// Reglas de Firestore para FixItNow.
+// Supuesto importante: el ID del documento de cada técnico en /technicians
+// es el UID de su cuenta (así lo crea la app al registrarse).
+//
+// Despliegue:  firebase deploy --only firestore:rules
+// Pruébalas antes en el emulador o en el "Rules Playground" de la consola.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------------- helpers ----------------
+    function signedIn() { return request.auth != null; }
+    function uid() { return request.auth.uid; }
+    function isAdmin() {
+      return signedIn() && (
+        request.auth.token.get('admin', false) == true ||
+        (exists(/databases/$(database)/documents/users/$(uid()))
+          && get(/databases/$(database)/documents/users/$(uid())).data.get('role', '') == 'admin')
+      );
+    }
+    function isBlocked() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(uid()))
+        && get(/databases/$(database)/documents/users/$(uid())).data.get('blocked', false) == true;
+    }
+    // Campos que cambian en esta escritura
+    function changed() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+    function onlyChanges(keys) { return changed().hasOnly(keys); }
+
+    // ---------------- users ----------------
+    match /users/{userId} {
+      allow read: if signedIn() && (uid() == userId || isAdmin());
+
+      // Al registrarse: solo puede elegir cliente o técnico, nunca admin ni "blocked"
+      allow create: if signedIn() && uid() == userId
+        && request.resource.data.get('role', 'cliente') in ['cliente', 'tecnico']
+        && request.resource.data.get('blocked', false) == false;
+
+      // El dueño edita sus datos, pero no su rol (salvo asignarlo si no tenía) ni el bloqueo
+      allow update: if isAdmin() || (
+        signedIn() && uid() == userId
+        && !changed().hasAny(['blocked', 'bloqueado', 'uid'])
+        && (
+          !changed().hasAny(['role']) ||
+          (resource.data.get('role', null) == null
+            && request.resource.data.role in ['cliente', 'tecnico'])
+        )
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    // ---------------- technicians ----------------
+    match /technicians/{techId} {
+      function isOwner() { return signedIn() && uid() == techId; }
+
+      // Público: perfiles publicados. El dueño y el admin ven el suyo aunque no esté publicado.
+      allow read: if resource == null
+        || resource.data.get('publicado', false) == true
+        || (signedIn() && resource.data.get('uid', '') == uid())
+        || isOwner()
+        || isAdmin();
+
+      allow create: if isOwner() && !isBlocked()
+        && request.resource.data.uid == uid()
+        && request.resource.data.get('publicado', false) == false
+        && request.resource.data.get('ratingPromedio', 0) == 0
+        && request.resource.data.get('blocked', false) == false;
+
+      allow update: if isAdmin()
+        // El técnico edita su perfil, pero no su rating, su dueño ni el bloqueo;
+        // y no puede publicarse si un admin lo bloqueó.
+        || (isOwner() && !isBlocked()
+            && !changed().hasAny(['uid', 'ratingPromedio', 'reseñasCount', 'blocked', 'createdAt'])
+            && (request.resource.data.get('publicado', false) == false
+                || resource.data.get('blocked', false) == false))
+        // Al dejar una reseña, cualquier usuario puede recalcular el promedio (0–5)
+        || (signedIn() && !isOwner()
+            && onlyChanges(['ratingPromedio', 'reseñasCount'])
+            && request.resource.data.ratingPromedio is number
+            && request.resource.data.ratingPromedio >= 0
+            && request.resource.data.ratingPromedio <= 5);
+
+      allow delete: if isAdmin();
+    }
+
+    // ---------------- reservas ----------------
+    // ID = {technicianId}_{YYYYMMDD}_{HH}: un documento por franja (evita doble reserva)
+    match /reservas/{bookingId} {
+      function isClient() { return signedIn() && resource.data.clientId == uid(); }
+      function isTech() { return signedIn() && resource.data.technicianId == uid(); }
+
+      allow read: if resource == null || isClient() || isTech() || isAdmin();
+
+      allow create: if signedIn() && !isBlocked()
+        && request.resource.data.clientId == uid()
+        && request.resource.data.technicianId != uid()
+        && bookingId.matches(request.resource.data.technicianId + '_[0-9]{8}_[0-9]{2}')
+        && request.resource.data.status == 'solicitada'
+        && request.resource.data.paymentStatus == 'pending';
+
+      // Cliente: solo puede reportar su pago (pending → reported) y enlazar el pago
+      allow update: if isAdmin()
+        || (isClient()
+            && onlyChanges(['paymentStatus', 'paymentMethod', 'paymentUpdatedAt', 'paymentId'])
+            && request.resource.data.paymentStatus in ['pending', 'reported'])
+        // Técnico: confirma la reserva y gestiona el pago
+        || (isTech()
+            && onlyChanges(['status', 'paymentStatus', 'paymentMethod', 'paymentUpdatedAt', 'paymentId'])
+            && request.resource.data.status in ['solicitada', 'confirmada', 'completada', 'cancelada']);
+
+      allow delete: if isClient() || isTech() || isAdmin();
+    }
+
+    // ---------------- payments ----------------
+    // ID = ID de la reserva (pagos nuevos). Los antiguos pueden tener ID aleatorio.
+    match /payments/{paymentId} {
+      function isClient() { return signedIn() && resource.data.clientId == uid(); }
+      function isTech() { return signedIn() && resource.data.technicianId == uid(); }
+      function bookingPath() { return /databases/$(database)/documents/reservas/$(paymentId); }
+
+      allow read: if resource == null || isClient() || isTech() || isAdmin();
+
+      // Lo crea el cliente (al reservar) o el técnico (al marcar pagada una reserva antigua).
+      // El monto debe coincidir con el de la reserva.
+      allow create: if signedIn() && !isBlocked()
+        && (request.resource.data.clientId == uid() || request.resource.data.technicianId == uid())
+        && request.resource.data.status == 'pending'
+        && request.resource.data.bookingId == paymentId
+        && exists(bookingPath())
+        && get(bookingPath()).data.clientId == request.resource.data.clientId
+        && get(bookingPath()).data.technicianId == request.resource.data.technicianId
+        && request.resource.data.amount == get(bookingPath()).data.get('amount', request.resource.data.amount);
+
+      allow update: if isAdmin()
+        // Cliente: solo reporta (pending → reported). No puede tocar el monto ni marcar "paid".
+        || (isClient()
+            && resource.data.status == 'pending'
+            && request.resource.data.status == 'reported'
+            && onlyChanges(['status', 'method', 'notes', 'proofUrl', 'reportedAt', 'updatedAt']))
+        // Técnico: confirma, rechaza o cancela. Tampoco cambia el monto.
+        || (isTech()
+            && request.resource.data.status in ['pending', 'paid', 'cancelled']
+            && onlyChanges(['status', 'method', 'notes', 'reportedAt', 'paidAt', 'updatedAt']));
+
+      allow delete: if isAdmin();
+    }
+
+    // ---------------- reseñas ----------------
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create: if signedIn() && !isBlocked()
+        && request.resource.data.clientId == uid()
+        && request.resource.data.technicianId != uid()
+        && request.resource.data.rating is int
+        && request.resource.data.rating >= 1
+        && request.resource.data.rating <= 5;
+      allow update, delete: if isAdmin() || (signedIn() && resource.data.clientId == uid());
+    }
+
+    match /reviews_public/{reviewId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // ---------------- mensajes ----------------
+    // conversationId = UIDs de los dos participantes, ordenados y unidos con "_"
+    match /messages/{messageId} {
+      function isParticipant() {
+        return signedIn() && (
+          resource.data.senderId == uid() ||
+          resource.data.receiverId == uid() ||
+          uid() in resource.data.conversationId.split('_')
+        );
+      }
+
+      allow read: if isParticipant() || isAdmin();
+
+      allow create: if signedIn() && !isBlocked()
+        && request.resource.data.senderId == uid()
+        && request.resource.data.receiverId != uid()
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() <= 5000
+        && uid() in request.resource.data.conversationId.split('_')
+        && request.resource.data.read == false;
+
+      // Solo el receptor marca como leído
+      allow update: if signedIn() && resource.data.receiverId == uid() && onlyChanges(['read']);
+
+      allow delete: if isAdmin();
+    }
+
+    // Todo lo demás, cerrado
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

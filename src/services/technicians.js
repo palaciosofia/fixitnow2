@@ -27,11 +27,35 @@ function slugify(str = "") {
     .replace(/(^-|-$)+/g, "");
 }
 
-function buildSlug(nombre, uid) {
+export function buildSlug(nombre, uid) {
   const base = slugify(nombre || "tecnico");
   const suffix = (uid || "").slice(0, 6) || Math.random().toString(36).slice(2, 8);
   return `${base}-${suffix}`;
 }
+
+/** Horario por defecto: lunes a viernes de 8:00 a 18:00 */
+export const DEFAULT_HORARIOS = {
+  lun: [{ inicio: "08:00", fin: "18:00" }],
+  mar: [{ inicio: "08:00", fin: "18:00" }],
+  mie: [{ inicio: "08:00", fin: "18:00" }],
+  jue: [{ inicio: "08:00", fin: "18:00" }],
+  vie: [{ inicio: "08:00", fin: "18:00" }],
+  sab: [],
+  dom: [],
+};
+
+/** Devuelve un objeto de horarios válido (los perfiles antiguos lo tenían como texto ""). */
+export function normalizeHorarios(h) {
+  if (!h || typeof h !== "object" || Array.isArray(h)) return { ...DEFAULT_HORARIOS };
+  const out = {};
+  for (const k of Object.keys(DEFAULT_HORARIOS)) {
+    out[k] = Array.isArray(h[k]) ? h[k].filter((f) => f?.inicio && f?.fin) : [];
+  }
+  return out;
+}
+
+// Campos que el técnico NO debe sobrescribir desde su panel
+const PROTECTED_FIELDS = ["id", "uid", "createdAt", "ratingPromedio", "reseñasCount", "publicado", "slug"];
 
 /* ------------- lecturas/escrituras básicas ------------ */
 
@@ -70,16 +94,8 @@ export async function ensureMyTechnicianDoc(uid, patch = {}) {
       tarifaBase: null,
       disponible: true,
 
-      // ✅ Horarios por día (para generar slots de 1h) y excepciones por fecha
-      horarios: {
-        lun: [{ inicio: "08:00", fin: "18:00" }],
-        mar: [{ inicio: "08:00", fin: "18:00" }],
-        mie: [{ inicio: "08:00", fin: "18:00" }],
-        jue: [{ inicio: "08:00", fin: "18:00" }],
-        vie: [{ inicio: "08:00", fin: "18:00" }],
-        sab: [],
-        dom: [],
-      },
+      // Horarios por día (para generar slots de 1h) y excepciones por fecha
+      horarios: { ...DEFAULT_HORARIOS },
       excepciones: {}, // ej: { "2025-10-23": ["12:00","13:00"] }
 
       ratingPromedio: 0,
@@ -97,24 +113,32 @@ export async function ensureMyTechnicianDoc(uid, patch = {}) {
     await setDoc(ref, data, { merge: true });
     return { id: uid, ...data };
   }
-  return { id: snap.id, ...snap.data() };
+
+  // Repara perfiles creados con datos incompletos (horarios como texto, sin slug)
+  const current = snap.data();
+  const fix = {};
+  if (!current.horarios || typeof current.horarios !== "object") fix.horarios = { ...DEFAULT_HORARIOS };
+  if (!current.slug) fix.slug = buildSlug(current.nombre || patch.nombre || "", uid);
+  if (Object.keys(fix).length) {
+    await setDoc(ref, { ...fix, updatedAt: serverTimestamp() }, { merge: true });
+  }
+  return { id: snap.id, ...current, ...fix };
 }
 
 /** Guarda (merge) campos del doc del técnico. Si cambia el nombre, actualiza slug. */
 export async function saveMyTechnicianDoc(uid, patch = {}) {
   const ref = doc(db, TECHS, uid);
 
-  // Si viene un nombre nuevo, generamos/actualizamos slug
-  const extra = {};
-  if (typeof patch.nombre === "string") {
-    extra.slug = buildSlug(patch.nombre, uid);
-  }
+  const clean = { ...patch };
+  for (const k of PROTECTED_FIELDS) delete clean[k];
 
-  await setDoc(
-    ref,
-    { ...patch, ...extra, updatedAt: serverTimestamp() },
-    { merge: true }
-  );
+  // Si viene un nombre, generamos/actualizamos slug
+  if (typeof clean.nombre === "string" && clean.nombre.trim()) {
+    clean.slug = buildSlug(clean.nombre, uid);
+  }
+  if ("horarios" in clean) clean.horarios = normalizeHorarios(clean.horarios);
+
+  await setDoc(ref, { ...clean, updatedAt: serverTimestamp() }, { merge: true });
 }
 
 /** Cambia el flag publicado (aplica tus reglas validPublish()) */

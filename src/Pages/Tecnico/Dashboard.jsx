@@ -1,48 +1,40 @@
 // src/Pages/Tecnico/Dashboard.jsx
+// Panel del técnico: editar su perfil público, ver pagos recibidos y reseñas.
+// Pestañas por URL: /mi-perfil, /mi-perfil?tab=pagos, /mi-perfil?tab=resenas
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import dayjs from "dayjs";
+import { Camera, Check, Eye, Plus, Star, X, MessageSquareText } from "lucide-react";
 import { useAuth } from "../../context/AuthProvider";
 import useMyTechId from "../../hooks/useMyTechId";
-import dayjs from "dayjs";
 import {
   ensureMyTechnicianDoc,
   getMyTechnicianDoc,
   saveMyTechnicianDoc,
   setPublicado,
+  DEFAULT_HORARIOS,
+  normalizeHorarios,
 } from "../../services/technicians";
 import { uploadToCloudinary } from "../../services/images";
-import { clThumb } from "../../utils/cloudinary";
-import TechnicianPaymentsTab from "../../Components/TechnicianPaymentsTab";
 import { getTechnicianReviews } from "../../services/reviews";
-import { 
-  Check, X, CloudUpload, Plus, Save, Eye, Camera, User, MapPin, 
-  Phone, Calendar, Award, Wrench, DollarSign, Star, Globe, 
-  Sparkles, Shield, Clock, MessageSquare
-} from "lucide-react";
+import { clThumb } from "../../utils/cloudinary";
+import { ESPECIALIDADES, priceFrom, techPath } from "../../utils/catalog";
+import { formatCOP } from "../../utils/money";
+import TechnicianPaymentsTab from "../../Components/TechnicianPaymentsTab";
+import {
+  Alert, Avatar, Badge, Button, Card, CardTitle, EmptyState, Field, Input, Loader,
+  PageHeader, Rating, Select, SpecialtyCover, Textarea, UnderlineTabs,
+} from "../../ui";
+import { cx } from "../../ui/cx";
 
-// ------ Catálogos ------
-const ESPECIALIDADES = [
-  "Plomería", "Electricidad", "Carpintería", "Pintura", "Cerrajería",
-  "Refrigeración", "Lavadoras / Secadoras", "Neveras", "Aires Acondicionados",
-  "Gasodomésticos", "Drywall", "Pisos / Baldosas", "Impermeabilización",
-  "Soldadura", "Aluminio / Vidriería", "Domótica básica", "CCTV",
-  "Ensamble de muebles", "Jardinería menor", "Tapicería", "Yeso / Estuco",
-  "Enchapes", "Iluminación LED", "Paneles solares (básico)"
+// Localidades y municipios del área metropolitana de Barranquilla
+const ZONAS_PREDEF = [
+  "Norte - Centro Histórico", "Riomar", "Suroccidente", "Suroriente", "Metropolitana",
+  "Soledad", "Puerto Colombia", "Malambo", "Galapa",
 ];
+const CIUDADES = ["Barranquilla", "Soledad", "Puerto Colombia", "Malambo", "Galapa"];
+const MIN_BIO = 120;
 
-const ZONAS_PREDEF = ["Zona 1", "Zona 2", "Zona 3", "Centro", "Norte", "Sur", "Este", "Oeste"];
-
-// ------ Fallback avatar SVG ------
-const DEFAULT_AVATAR =
-  "data:image/svg+xml;utf8," +
-  encodeURIComponent(`
-    <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'>
-      <circle cx='50' cy='50' r='50' fill='#f3f4f6'/>
-      <circle cx='50' cy='38' r='18' fill='#d1d5db'/>
-      <path d='M10,90 a40,30 0 0,1 80,0' fill='#d1d5db'/>
-    </svg>
-  `);
-
-// ------ Estado base ------
 const EMPTY = {
   fotoURL: "",
   nombre: "",
@@ -52,39 +44,36 @@ const EMPTY = {
   servicios: [], // [{ nombre, precioSugerido }]
   zonasCobertura: [],
   aniosExperiencia: 0,
-  tarifaBase: null,
   disponible: true,
-  horarios: "",
-
-  // ✅ nuevos
+  horarios: DEFAULT_HORARIOS,
   telefono: "",
   certificaciones: [],
   disponibilidadTxt: "",
 };
 
-// =======================================
-//   Componente
-// =======================================
 export default function TecnicoDashboard() {
   const { user, role, loading: authLoading } = useAuth();
-  const { tid, loading: tidLoading } = useMyTechId(user?.uid);
+  const { tid } = useMyTechId(user?.uid);
+  const [params, setParams] = useSearchParams();
+  const tab = params.get("tab") || "perfil";
+  const setTab = (t) => setParams(t === "perfil" ? {} : { tab: t }, { replace: true });
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [pubLoading, setPubLoading] = useState(false);
-  const [msg, setMsg] = useState({ type: "", text: "" });
-  const [activeTab, setActiveTab] = useState("profile"); // "profile" | "payments" | "reviews"
-  const [reviews, setReviews] = useState([]);
-  const [reviewsLoading, setReviewsLoading] = useState(false);
-
+  const [uploading, setUploading] = useState(false);
+  const [msg, setMsg] = useState(null); // { tone, text }
   const [docTech, setDocTech] = useState(null);
   const [form, setForm] = useState(EMPTY);
+  const [reviews, setReviews] = useState([]);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
 
   // ------- Carga inicial -------
   useEffect(() => {
     const boot = async () => {
       if (authLoading) return;
       if (!user || (role !== "tecnico" && role !== "admin")) {
-        setMsg({ type: "error", text: "Debes iniciar sesión como técnico." });
+        setMsg({ tone: "danger", text: "Debes iniciar sesión como técnico." });
         setLoading(false);
         return;
       }
@@ -99,10 +88,11 @@ export default function TecnicoDashboard() {
           especialidades: Array.isArray(data?.especialidades) ? data.especialidades : [],
           zonasCobertura: Array.isArray(data?.zonasCobertura) ? data.zonasCobertura : [],
           certificaciones: Array.isArray(data?.certificaciones) ? data.certificaciones : [],
+          horarios: normalizeHorarios(data?.horarios),
         });
       } catch (e) {
         console.error(e);
-        setMsg({ type: "error", text: "No se pudo cargar tu perfil técnico." });
+        setMsg({ tone: "danger", text: "No se pudo cargar tu perfil técnico." });
       } finally {
         setLoading(false);
       }
@@ -110,31 +100,23 @@ export default function TecnicoDashboard() {
     boot();
   }, [user, role, authLoading]);
 
-  // ------- Cargar reseñas -------
+  // ------- Reseñas -------
   useEffect(() => {
     if (!tid) return;
-
     setReviewsLoading(true);
-    const loadReviews = async () => {
-      try {
-        const techReviews = await getTechnicianReviews(tid);
-        setReviews(techReviews);
-      } catch (error) {
-        console.error("Error cargando reseñas:", error);
-      } finally {
-        setReviewsLoading(false);
-      }
-    };
-
-    loadReviews();
+    getTechnicianReviews(tid)
+      .then(setReviews)
+      .catch((e) => console.error("Error cargando reseñas:", e))
+      .finally(() => setReviewsLoading(false));
   }, [tid]);
 
   // ------- Helpers de estado -------
   const set = (k, v) => setForm((s) => ({ ...s, [k]: v }));
-
-  const addServicio = () =>
-    setForm((s) => ({ ...s, servicios: [...s.servicios, { nombre: "", precioSugerido: "" }] }));
-
+  const toggleIn = (k, value) =>
+    setForm((s) => {
+      const arr = s[k] || [];
+      return { ...s, [k]: arr.includes(value) ? arr.filter((x) => x !== value) : [...arr, value] };
+    });
   const setServicio = (i, patch) =>
     setForm((s) => {
       const arr = [...s.servicios];
@@ -142,835 +124,492 @@ export default function TecnicoDashboard() {
       return { ...s, servicios: arr };
     });
 
-  const delServicio = (i) =>
-    setForm((s) => ({ ...s, servicios: s.servicios.filter((_, idx) => idx !== i) }));
-
-  const toggleEspecialidad = (esp) =>
-    setForm((s) => {
-      const has = s.especialidades.includes(esp);
-      return {
-        ...s,
-        especialidades: has ? s.especialidades.filter((x) => x !== esp) : [...s.especialidades, esp],
-      };
-    });
-
-  const toggleZona = (z) =>
-    setForm((s) => {
-      const has = s.zonasCobertura.includes(z);
-      return {
-        ...s,
-        zonasCobertura: has ? s.zonasCobertura.filter((x) => x !== z) : [...s.zonasCobertura, z],
-      };
-    });
-
-  
   const checklist = useMemo(() => {
-    const fotoOK = !!form.fotoURL;
-    const bioOK = typeof form.bioCorta === "string" && form.bioCorta.trim().length >= 120;
-    const espOK = Array.isArray(form.especialidades) && form.especialidades.length >= 1;
-    const servOK =
-      Array.isArray(form.servicios) &&
-      form.servicios.length >= 1 &&
-      typeof form.servicios[0]?.nombre === "string" &&
-      form.servicios[0].nombre.trim().length > 0 &&
-      Number.isFinite(Number(form.servicios[0]?.precioSugerido)) &&
-      Number(form.servicios[0].precioSugerido) >= 0;
-    const ciudadOK = typeof form.ciudad === "string" && form.ciudad.trim().length > 0;
-    const zonasOK = Array.isArray(form.zonasCobertura) && form.zonasCobertura.length >= 1;
-
-    return {
-      fotoOK,
-      bioOK,
-      espOK,
-      servOK,
-      ciudadOK,
-      zonasOK,
-      all: fotoOK && bioOK && espOK && servOK && ciudadOK && zonasOK,
-    };
+    const items = [
+      { key: "foto", label: "Foto de perfil", ok: !!form.fotoURL },
+      { key: "bio", label: `“Sobre ti” de ${MIN_BIO} caracteres`, ok: (form.bioCorta || "").trim().length >= MIN_BIO },
+      { key: "esp", label: "Al menos una especialidad", ok: (form.especialidades || []).length >= 1 },
+      {
+        key: "serv",
+        label: "Un servicio con precio",
+        ok: (form.servicios || []).some((s) => String(s?.nombre || "").trim() && Number(s?.precioSugerido) > 0),
+      },
+      { key: "ciudad", label: "Ciudad", ok: !!(form.ciudad || "").trim() },
+      { key: "zonas", label: "Zonas donde trabajas", ok: (form.zonasCobertura || []).length >= 1 },
+    ];
+    return { items, done: items.filter((i) => i.ok).length, all: items.every((i) => i.ok) };
   }, [form]);
 
   // ------- Guardar -------
   const onSave = async () => {
-    if (!user) return;
+    if (!user) return false;
     setSaving(true);
-    setMsg({ type: "", text: "" });
+    setMsg(null);
     try {
-      const payload = {
+      const servicios = (form.servicios || [])
+        .map((s) => ({
+          nombre: String(s.nombre || "").trim(),
+          precioSugerido: s.precioSugerido === "" || s.precioSugerido == null ? 0 : Number(s.precioSugerido),
+        }))
+        .filter((s) => s.nombre);
+      // Precio "desde": el servicio más barato. Lo usan el catálogo y las reservas.
+      const precios = servicios.map((x) => x.precioSugerido).filter((n) => Number.isFinite(n) && n > 0);
+      await saveMyTechnicianDoc(user.uid, {
         ...form,
+        servicios,
         aniosExperiencia: Number(form.aniosExperiencia) || 0,
-        tarifaBase: form.tarifaBase === "" ? null : Number(form.tarifaBase),
+        tarifaBase: precios.length ? Math.min(...precios) : null,
         certificaciones: Array.isArray(form.certificaciones) ? form.certificaciones : [],
         disponibilidadTxt: form.disponibilidadTxt || "",
         telefono: (form.telefono || "").trim(),
-        servicios: (form.servicios || [])
-          .map((s) => ({
-            nombre: String(s.nombre || "").trim(),
-            precioSugerido:
-              s.precioSugerido === "" || s.precioSugerido == null
-                ? 0
-                : Number(s.precioSugerido),
-          }))
-          .filter((s) => s.nombre),
-      };
-      await saveMyTechnicianDoc(user.uid, payload);
-      setMsg({ type: "ok", text: "Cambios guardados." });
+      });
       const data = await getMyTechnicianDoc(user.uid);
       setDocTech(data);
+      setMsg({ tone: "success", text: "Guardamos tus cambios." });
+      return true;
     } catch (e) {
       console.error(e);
-      setMsg({ type: "error", text: "No pudimos guardar los cambios." });
+      setMsg({ tone: "danger", text: "No pudimos guardar los cambios." });
+      return false;
     } finally {
       setSaving(false);
     }
   };
 
-  // ------- Publicar / Ocultar -------
   const onPublish = async () => {
-    if (!user) return;
+    if (!checklist.all) {
+      setMsg({ tone: "warning", text: "Completa los pasos de la lista para publicar tu perfil." });
+      return;
+    }
     setPubLoading(true);
-    setMsg({ type: "", text: "" });
     try {
-      if (!checklist.all) {
-        setMsg({
-          type: "error",
-          text:
-            "Te faltan campos para publicar: foto, bio (≥120), 1 especialidad, 1 servicio con precio, ciudad y al menos 1 zona.",
-        });
-        setPubLoading(false);
-        return;
-      }
-      await onSave();
+      if (!(await onSave())) return;
       await setPublicado(user.uid, true);
-      setMsg({ type: "ok", text: "¡Tu perfil ya está publicado en el catálogo!" });
-      const data = await getMyTechnicianDoc(user.uid);
-      setDocTech(data);
+      setDocTech(await getMyTechnicianDoc(user.uid));
+      setMsg({ tone: "success", text: "¡Tu perfil ya está publicado en el catálogo!" });
     } catch (e) {
       console.error(e);
-      setMsg({ type: "error", text: "No pudimos publicar el perfil." });
+      setMsg({ tone: "danger", text: docTech?.blocked ? "Un administrador bloqueó tu perfil. Escríbenos desde Contacto." : "No pudimos publicar el perfil." });
     } finally {
       setPubLoading(false);
     }
   };
 
   const onUnpublish = async () => {
-    if (!user) return;
     setPubLoading(true);
-    setMsg({ type: "", text: "" });
+    setMsg(null);
     try {
       await setPublicado(user.uid, false);
-      setMsg({ type: "ok", text: "Tu perfil se ha ocultado del catálogo." });
-      const data = await getMyTechnicianDoc(user.uid);
-      setDocTech(data);
+      setDocTech(await getMyTechnicianDoc(user.uid));
+      setMsg({ tone: "success", text: "Ocultamos tu perfil del catálogo." });
     } catch (e) {
       console.error(e);
-      setMsg({ type: "error", text: "No pudimos ocultar el perfil." });
+      setMsg({ tone: "danger", text: "No pudimos ocultar el perfil." });
     } finally {
       setPubLoading(false);
     }
   };
 
-  if (loading || authLoading) return <div className="p-6">Cargando tu perfil…</div>;
+  const onPhoto = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !user) return;
+    setUploading(true);
+    setMsg(null);
+    try {
+      const { secureUrl } = await uploadToCloudinary(file, { folder: "tech_photos" });
+      set("fotoURL", secureUrl);
+      await saveMyTechnicianDoc(user.uid, { fotoURL: secureUrl });
+      setMsg({ tone: "success", text: "Subimos tu foto." });
+    } catch (err) {
+      console.error(err);
+      setMsg({ tone: "danger", text: err.message || "No pudimos subir tu foto." });
+    } finally {
+      setUploading(false);
+    }
+  };
 
-  // ------- Thumbnails Cloudinary -------
-  const avatar56 = form.fotoURL ? clThumb(form.fotoURL, { w: 56, h: 56 }) : DEFAULT_AVATAR;
-  const avatar80 = form.fotoURL ? clThumb(form.fotoURL, { w: 80, h: 80 }) : DEFAULT_AVATAR;
+  if (loading || authLoading) return <Loader label="Cargando tu perfil…" />;
+
+  const publicado = !!docTech?.publicado;
+  const zonas = [...new Set([...ZONAS_PREDEF, ...(form.zonasCobertura || [])])];
+  const bioLen = (form.bioCorta || "").trim().length;
+  const preview = { ...docTech, ...form, tarifaBase: null };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
-      <div className="container mx-auto px-4 py-8">
-        {/* Header mejorado */}
-        <div className="mb-8">
-          <div className="bg-white rounded-3xl shadow-xl border border-white/20 backdrop-blur-sm p-8">
-            <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
-              <div className="flex items-center gap-6">
-                {/* Avatar grande */}
-                <div className="relative">
-                  <div className="w-20 h-20 rounded-2xl overflow-hidden border-4 border-white shadow-lg">
-                    <img src={avatar80} alt={form.nombre || "Foto"} className="w-full h-full object-cover" />
-                  </div>
-                  <div className="absolute -bottom-2 -right-2 w-8 h-8 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-xl flex items-center justify-center shadow-lg">
-                    <Camera className="w-4 h-4 text-white" />
-                  </div>
-                </div>
-                
-                <div>
-                  <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 via-blue-900 to-indigo-900 bg-clip-text text-transparent">
-                    Mi Perfil Técnico
-                  </h1>
-                  <p className="text-gray-600 mt-2 text-lg">
-                    Completa tu perfil y publícalo para aparecer en el catálogo
-                  </p>
-                  <div className="flex items-center gap-4 mt-3">
-                    <div className="flex items-center gap-2">
-                      <div className={`w-3 h-3 rounded-full ${docTech?.publicado ? 'bg-emerald-500' : 'bg-gray-400'}`}></div>
-                      <span className="text-sm font-medium">
-                        {docTech?.publicado ? 'Perfil Público' : 'Perfil Privado'}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Star className="w-4 h-4 text-yellow-500" />
-                      <span className="text-sm text-gray-600">
-                        Checklist: {checklist.all ? 
-                          <span className="text-emerald-600 font-semibold">Completo ✓</span> : 
-                          <span className="text-amber-600 font-semibold">Pendiente</span>
-                        }
-                      </span>
-                    </div>
-                  </div>
+    <div>
+      <PageHeader
+        title="Mi perfil de técnico"
+        badge={
+          docTech?.blocked ? <Badge tone="danger">Bloqueado</Badge> :
+          publicado ? <Badge tone="success" dot>Publicado</Badge> : <Badge>Oculto del catálogo</Badge>
+        }
+        subtitle="Así te ven los clientes antes de reservar"
+        actions={
+          tab === "perfil" && (
+            <>
+              {docTech && <Button variant="secondary" to={techPath(docTech)}><Eye className="h-4 w-4" aria-hidden="true" /> Vista previa</Button>}
+              <Button onClick={onSave} loading={saving} disabled={pubLoading}>Guardar cambios</Button>
+            </>
+          )
+        }
+      />
+
+      <UnderlineTabs
+        label="Secciones"
+        value={tab}
+        onChange={setTab}
+        className="mb-5"
+        items={[
+          { value: "perfil", label: "Perfil" },
+          { value: "pagos", label: "Pagos" },
+          { value: "resenas", label: `Reseñas${reviews.length ? ` · ${reviews.length}` : ""}` },
+        ]}
+      />
+
+      {msg && <Alert tone={msg.tone} className="mb-4" onClose={() => setMsg(null)}>{msg.text}</Alert>}
+
+      {tab === "pagos" && (tid ? <TechnicianPaymentsTab technicianId={tid} /> : <Loader />)}
+      {tab === "resenas" && <ReviewsTab reviews={reviews} loading={reviewsLoading} />}
+
+      {tab === "perfil" && (
+        <div className="flex flex-wrap items-start gap-5">
+          <div className="flex min-w-0 flex-[999_1_460px] flex-col gap-4">
+            {/* Foto y presentación */}
+            <Card className="p-5 sm:p-6">
+              <CardTitle>Foto y presentación</CardTitle>
+              <div className="flex flex-wrap items-center gap-4">
+                <Avatar name={form.nombre || user?.displayName} src={form.fotoURL ? clThumb(form.fotoURL, { w: 144, h: 144 }) : ""} size={72} />
+                <div className="flex flex-col gap-1.5">
+                  <label className={cx("inline-flex h-10 cursor-pointer items-center gap-2 rounded-[10px] border border-line bg-white px-3.5 text-[13px] font-semibold hover:bg-canvas", uploading && "pointer-events-none opacity-60")}>
+                    <Camera className="h-4 w-4" aria-hidden="true" />
+                    {uploading ? "Subiendo…" : form.fotoURL ? "Cambiar foto" : "Subir foto"}
+                    <input type="file" accept="image/jpeg,image/png,image/webp" onChange={onPhoto} className="sr-only" />
+                  </label>
+                  <span className="text-xs text-subtle">JPG, PNG o WEBP · máximo 5 MB</span>
                 </div>
               </div>
-
-              {/* Botones de acción mejorados */}
-              <div className="flex items-center gap-3">
-                <button 
-                  onClick={onSave} 
-                  disabled={saving || pubLoading} 
-                  className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl bg-white border-2 border-gray-200 hover:border-gray-300 hover:shadow-lg transition-all duration-200 font-medium"
+              <div className="mt-4 grid gap-3.5 sm:grid-cols-2">
+                <Field label="Nombre público">
+                  {(id) => <Input id={id} value={form.nombre} onChange={(e) => set("nombre", e.target.value)} />}
+                </Field>
+                <Field label="Años de experiencia">
+                  {(id) => <Input id={id} type="number" min="0" max="60" value={form.aniosExperiencia} onChange={(e) => set("aniosExperiencia", e.target.value)} />}
+                </Field>
+                <Field label="Ciudad">
+                  {(id) => (
+                    <Select id={id} value={form.ciudad} onChange={(e) => set("ciudad", e.target.value)}>
+                      <option value="">Elige…</option>
+                      {[...new Set([...CIUDADES, form.ciudad].filter(Boolean))].map((c) => <option key={c}>{c}</option>)}
+                    </Select>
+                  )}
+                </Field>
+                <Field label="Teléfono / WhatsApp" optional>
+                  {(id) => <Input id={id} type="tel" value={form.telefono} onChange={(e) => set("telefono", e.target.value)} placeholder="+57 300 000 0000" />}
+                </Field>
+                <Field
+                  label="Sobre ti"
+                  className="sm:col-span-2"
+                  hint={bioLen < MIN_BIO ? `${bioLen} / ${MIN_BIO} caracteres mínimo para publicar` : `${bioLen} caracteres`}
                 >
-                  <Save className="w-5 h-5" /> 
-                  {saving ? "Guardando…" : "Guardar"}
-                </button>
-
-                {!docTech?.publicado ? (
-                  <button 
-                    onClick={onPublish} 
-                    disabled={saving || pubLoading} 
-                    className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-700 hover:via-teal-700 hover:to-cyan-700 text-white shadow-lg hover:shadow-xl transition-all duration-200 font-semibold transform hover:scale-105"
-                  >
-                    <Globe className="w-5 h-5" /> 
-                    {pubLoading ? "Publicando…" : "Publicar Perfil"}
-                  </button>
-                ) : (
-                  <button 
-                    onClick={onUnpublish} 
-                    disabled={saving || pubLoading} 
-                    className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl bg-gradient-to-r from-gray-700 to-gray-900 hover:from-gray-800 hover:to-black text-white shadow-lg hover:shadow-xl transition-all duration-200 font-semibold"
-                  >
-                    <Eye className="w-5 h-5" /> 
-                    {pubLoading ? "Actualizando…" : "Ocultar Perfil"}
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Mensajes mejorados */}
-        {msg.text && (
-          <div className={`mb-6 rounded-2xl border-2 p-4 backdrop-blur-sm ${
-            msg.type === "error" 
-              ? "bg-red-50/80 text-red-700 border-red-200" 
-              : "bg-emerald-50/80 text-emerald-700 border-emerald-200"
-          }`}>
-            <div className="flex items-center gap-3">
-              {msg.type === "error" ? 
-                <X className="w-5 h-5 text-red-500" /> : 
-                <Check className="w-5 h-5 text-emerald-500" />
-              }
-              <span className="font-medium">{msg.text}</span>
-            </div>
-          </div>
-        )}
-
-        {/* Resumen del perfil mejorado */}
-        <div className="mb-8">
-          <div className="bg-white rounded-3xl shadow-xl border border-white/20 backdrop-blur-sm p-8">
-            <div className="flex items-center gap-2 mb-6">
-              <Sparkles className="w-6 h-6 text-indigo-600" />
-              <h2 className="text-2xl font-bold text-gray-900">Vista Previa del Perfil</h2>
-            </div>
-            
-            <div className="flex flex-col lg:flex-row items-start gap-8">
-              <div className="relative">
-                <div className="w-24 h-24 rounded-3xl overflow-hidden border-4 border-gradient shadow-xl">
-                  <img src={avatar80} alt={form.nombre || "Foto"} className="w-full h-full object-cover" />
-                </div>
-              </div>
-              
-              <div className="flex-1 space-y-4">
-                <div>
-                  <h3 className="text-2xl font-bold text-gray-900">{form.nombre || "Tu nombre aparecerá aquí"}</h3>
-                  <div className="flex items-center gap-2 mt-2">
-                    <MapPin className="w-4 h-4 text-gray-500" />
-                    <span className="text-gray-600">{form.ciudad || "Ciudad por definir"}</span>
-                  </div>
-                </div>
-                
-                <div className="bg-gray-50 rounded-2xl p-4">
-                  <p className="text-gray-700 leading-relaxed">
-                    {form.bioCorta ? 
-                      form.bioCorta.slice(0, 200) + (form.bioCorta.length > 200 ? "…" : "") : 
-                      "Tu biografía profesional aparecerá aquí. Cuéntanos sobre tu experiencia y servicios."
-                    }
-                  </p>
-                </div>
-                
-                <div className="flex flex-wrap gap-2">
-                  {form.especialidades.length > 0 ? 
-                    form.especialidades.slice(0, 3).map((esp, i) => (
-                      <span key={i} className="px-3 py-1 bg-gradient-to-r from-blue-100 to-indigo-100 text-blue-800 rounded-xl text-sm font-medium">
-                        {esp}
-                      </span>
-                    )) :
-                    <span className="px-3 py-1 bg-gray-100 text-gray-500 rounded-xl text-sm">
-                      Añade especialidades
-                    </span>
-                  }
-                  {form.especialidades.length > 3 && (
-                    <span className="px-3 py-1 bg-gray-100 text-gray-600 rounded-xl text-sm">
-                      +{form.especialidades.length - 3} más
-                    </span>
+                  {(id) => (
+                    <Textarea
+                      id={id}
+                      rows={4}
+                      value={form.bioCorta}
+                      onChange={(e) => set("bioCorta", e.target.value)}
+                      placeholder="Qué trabajos haces, con qué herramientas, si das garantía o factura…"
+                    />
                   )}
-                </div>
+                </Field>
               </div>
-              
-              {/* Indicadores de checklist mejorados */}
-              <div className="grid grid-cols-3 lg:grid-cols-1 gap-3">
-                <div className={`flex items-center gap-2 px-3 py-2 rounded-xl ${checklist.fotoOK ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
-                  <Camera className="w-4 h-4" />
-                  <span className="text-sm font-medium">Foto</span>
-                  {checklist.fotoOK && <Check className="w-4 h-4" />}
-                </div>
-                <div className={`flex items-center gap-2 px-3 py-2 rounded-xl ${checklist.bioOK ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
-                  <User className="w-4 h-4" />
-                  <span className="text-sm font-medium">Bio</span>
-                  {checklist.bioOK && <Check className="w-4 h-4" />}
-                </div>
-                <div className={`flex items-center gap-2 px-3 py-2 rounded-xl ${checklist.espOK ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
-                  <Wrench className="w-4 h-4" />
-                  <span className="text-sm font-medium">Skills</span>
-                  {checklist.espOK && <Check className="w-4 h-4" />}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+            </Card>
 
-        {/* Tabs */}
-        <div className="mb-8 mt-8 flex gap-2 border-b border-gray-300">
-          {[
-            { id: "profile", label: "👤 Mi Perfil", icon: User },
-            { id: "payments", label: "💰 Mis Pagos", icon: DollarSign },
-            { id: "reviews", label: "⭐ Mis Reseñas", icon: Star },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`px-6 py-3 font-bold transition-all border-b-2 ${
-                activeTab === tab.id
-                  ? "border-emerald-600 text-emerald-600"
-                  : "border-transparent text-gray-600 hover:text-gray-900"
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Contenido de Tabs */}
-        {activeTab === "profile" && (
-          <>
-        {/* Formularios mejorados */}
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-          {/* Columna 1 - Información Personal */}
-          <div className="space-y-6">
-            {/* Tarjeta de Foto y Datos Básicos */}
-            <div className="bg-white rounded-3xl shadow-xl border border-white/20 backdrop-blur-sm p-8">
-              <div className="flex items-center gap-3 mb-6">
-                <User className="w-6 h-6 text-blue-600" />
-                <h3 className="text-xl font-bold text-gray-900">Información Personal</h3>
-              </div>
-
-              {/* Foto */}
-              <div className="mb-6">
-                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
-                  <Camera className="w-4 h-4 text-blue-600" />
-                  Foto de Perfil
-                </label>
-                <div className="flex items-center gap-6">
-                  <div className="relative">
-                    <div className="w-24 h-24 rounded-3xl overflow-hidden border-4 border-gradient shadow-lg">
-                      <img src={avatar80} alt="Foto" className="w-full h-full object-cover" />
-                    </div>
-                    <label className="absolute -bottom-2 -right-2 w-8 h-8 bg-gradient-to-r from-blue-500 to-indigo-500 rounded-xl flex items-center justify-center shadow-lg cursor-pointer hover:scale-110 transition-transform">
-                      <Camera className="w-4 h-4 text-white" />
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={async (e) => {
-                          const file = e.target.files?.[0];
-                          if (!file) return;
-                          try {
-                            setMsg({ type: "", text: "" });
-                            const { secureUrl } = await uploadToCloudinary(file, { folder: "tech_photos" });
-                            set("fotoURL", secureUrl);
-                            await saveMyTechnicianDoc(user.uid, { fotoURL: secureUrl });
-                            setMsg({ type: "ok", text: "Foto subida y guardada." });
-                          } catch (err) {
-                            console.error(err);
-                            setMsg({ type: "error", text: err.message || "No pudimos subir tu foto." });
-                          }
-                        }}
-                      />
-                    </label>
-                  </div>
-                  {form.fotoURL && (
-                    <a 
-                      className="text-sm inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium" 
-                      href={form.fotoURL} 
-                      target="_blank" 
-                      rel="noreferrer"
-                    >
-                      <CloudUpload className="w-4 h-4" /> Ver imagen actual
-                    </a>
-                  )}
-                </div>
-              </div>
-
-              {/* Nombre */}
-              <div className="mb-6">
-                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
-                  <User className="w-4 h-4 text-blue-600" />
-                  Nombre Público
-                </label>
-                <input
-                  className="w-full px-4 py-3 rounded-2xl border-2 border-gray-200 focus:border-blue-400 focus:ring-4 focus:ring-blue-100 transition-all duration-200 outline-none"
-                  value={form.nombre}
-                  onChange={(e) => set("nombre", e.target.value)}
-                  placeholder="Ej. Lina López"
-                />
-              </div>
-
-              {/* Bio */}
-              <div className="mb-6">
-                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
-                  <Shield className="w-4 h-4 text-blue-600" />
-                  Biografía Profesional
-                  <span className="text-xs bg-amber-100 text-amber-700 px-2 py-1 rounded-lg">Mín. 120 caracteres</span>
-                </label>
-                <textarea
-                  className="w-full px-4 py-3 rounded-2xl border-2 border-gray-200 focus:border-blue-400 focus:ring-4 focus:ring-blue-100 transition-all duration-200 outline-none resize-none"
-                  rows={5}
-                  value={form.bioCorta}
-                  onChange={(e) => set("bioCorta", e.target.value)}
-                  placeholder="Cuéntanos sobre tu experiencia profesional, herramientas especializadas, garantías que ofreces, certificaciones, etc. Esta información ayudará a los clientes a conocerte mejor."
-                />
-                <div className={`text-sm mt-2 flex items-center gap-2 ${checklist.bioOK ? "text-emerald-600" : "text-gray-500"}`}>
-                  {checklist.bioOK ? <Check className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
-                  {form.bioCorta?.trim()?.length || 0} / 120 caracteres
-                </div>
-              </div>
-
-              {/* Ciudad */}
-              <div className="mb-6">
-                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
-                  <MapPin className="w-4 h-4 text-blue-600" />
-                  Ciudad Principal
-                </label>
-                <input
-                  className="w-full px-4 py-3 rounded-2xl border-2 border-gray-200 focus:border-blue-400 focus:ring-4 focus:ring-blue-100 transition-all duration-200 outline-none"
-                  value={form.ciudad}
-                  onChange={(e) => set("ciudad", e.target.value)}
-                  placeholder="Ej. Medellín, Bogotá, Cali..."
-                />
-              </div>
-
-              {/* Teléfono */}
-              <div className="mb-6">
-                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
-                  <Phone className="w-4 h-4 text-blue-600" />
-                  Teléfono de Contacto
-                </label>
-                <input
-                  className="w-full px-4 py-3 rounded-2xl border-2 border-gray-200 focus:border-blue-400 focus:ring-4 focus:ring-blue-100 transition-all duration-200 outline-none"
-                  value={form.telefono}
-                  onChange={(e) => set("telefono", e.target.value)}
-                  placeholder="+57 3xx xxx xxxx"
-                />
-              </div>
-
-              {/* Disponibilidad */}
-              <div className="mb-6">
-                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
-                  <Calendar className="w-4 h-4 text-blue-600" />
-                  Horarios de Disponibilidad
-                </label>
-                <textarea
-                  className="w-full px-4 py-3 rounded-2xl border-2 border-gray-200 focus:border-blue-400 focus:ring-4 focus:ring-blue-100 transition-all duration-200 outline-none resize-none"
-                  rows={3}
-                  value={form.disponibilidadTxt}
-                  onChange={(e) => set("disponibilidadTxt", e.target.value)}
-                  placeholder="Ej: Lunes a Viernes 8:00 AM - 6:00 PM, Sábados 9:00 AM - 1:00 PM"
-                />
-              </div>
-
-              {/* Switch disponible */}
-              <div className="flex items-center justify-between p-4 bg-gradient-to-r from-emerald-50 to-teal-50 rounded-2xl border border-emerald-200">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center">
-                    <Clock className="w-5 h-5 text-emerald-600" />
-                  </div>
-                  <div>
-                    <label className="text-sm font-semibold text-emerald-800">¿Disponible para nuevos trabajos?</label>
-                    <p className="text-xs text-emerald-600">Los clientes podrán contactarte para reservar servicios</p>
-                  </div>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={!!form.disponible}
-                  onChange={(e) => set("disponible", e.target.checked)}
-                  className="w-6 h-6 text-emerald-600 rounded-lg focus:ring-emerald-500"
-                />
-              </div>
-            </div>
-
-            {/* Zonas de Cobertura */}
-            <div className="bg-white rounded-3xl shadow-xl border border-white/20 backdrop-blur-sm p-8">
-              <div className="flex items-center gap-3 mb-6">
-                <MapPin className="w-6 h-6 text-indigo-600" />
-                <h3 className="text-xl font-bold text-gray-900">Zonas de Cobertura</h3>
-                <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-lg">Mínimo 1</span>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-3">
-                {ZONAS_PREDEF.map((z) => {
-                  const active = form.zonasCobertura.includes(z);
-                  return (
-                    <button
-                      key={z}
-                      type="button"
-                      onClick={() => toggleZona(z)}
-                      className={`px-4 py-3 rounded-2xl border-2 transition-all duration-200 font-medium ${
-                        active 
-                          ? "bg-gradient-to-r from-indigo-600 to-purple-600 text-white border-transparent shadow-lg transform scale-105" 
-                          : "bg-white text-gray-700 border-gray-200 hover:border-indigo-300 hover:bg-indigo-50"
-                      }`}
-                    >
-                      {z}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
-          {/* Columna 2 - Servicios y Especialidades */}
-          <div className="space-y-6">
             {/* Especialidades */}
-            <div className="bg-white rounded-3xl shadow-xl border border-white/20 backdrop-blur-sm p-8">
-              <div className="flex items-center gap-3 mb-6">
-                <Wrench className="w-6 h-6 text-emerald-600" />
-                <h3 className="text-xl font-bold text-gray-900">Especialidades</h3>
-                <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded-lg">Mínimo 1</span>
-              </div>
-              
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Card className="p-5 sm:p-6">
+              <CardTitle>Especialidades</CardTitle>
+              <div className="flex flex-wrap gap-2" role="group" aria-label="Especialidades">
                 {ESPECIALIDADES.map((esp) => {
-                  const active = form.especialidades.includes(esp);
+                  const on = form.especialidades.includes(esp);
                   return (
                     <button
                       key={esp}
                       type="button"
-                      onClick={() => toggleEspecialidad(esp)}
-                      className={`px-4 py-3 rounded-2xl border-2 transition-all duration-200 font-medium text-sm ${
-                        active 
-                          ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white border-transparent shadow-lg" 
-                          : "bg-white text-gray-700 border-gray-200 hover:border-emerald-300 hover:bg-emerald-50"
-                      }`}
+                      aria-pressed={on}
+                      onClick={() => toggleIn("especialidades", esp)}
+                      className={cx(
+                        "inline-flex h-9 items-center gap-1.5 rounded-full px-3.5 text-[13px] transition-colors",
+                        on ? "bg-brand font-medium text-white" : "border border-line bg-white hover:border-brand"
+                      )}
                     >
+                      {on && <Check className="h-3.5 w-3.5" aria-hidden="true" />}
                       {esp}
                     </button>
                   );
                 })}
               </div>
-            </div>
+            </Card>
 
             {/* Servicios */}
-            <div className="bg-white rounded-3xl shadow-xl border border-white/20 backdrop-blur-sm p-8">
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-3">
-                  <DollarSign className="w-6 h-6 text-green-600" />
-                  <h3 className="text-xl font-bold text-gray-900">Servicios y Precios</h3>
-                  <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-lg">Mínimo 1</span>
-                </div>
-                <button 
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-gradient-to-r from-green-600 to-emerald-600 text-white shadow-lg hover:shadow-xl transition-all duration-200 font-medium transform hover:scale-105" 
-                  onClick={addServicio}
-                >
-                  <Plus className="w-4 h-4" /> Añadir Servicio
-                </button>
-              </div>
-
-              <div className="space-y-4">
+            <Card className="p-5 sm:p-6">
+              <CardTitle>Servicios y precios</CardTitle>
+              <p className="-mt-2 mb-4 text-[13px] text-subtle">El más barato se muestra como tu precio “desde” en el catálogo.</p>
+              <div className="flex flex-col gap-2">
                 {form.servicios.map((s, i) => (
-                  <div key={i} className="bg-gray-50 rounded-2xl p-4 border-2 border-gray-100">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
-                      <div className="md:col-span-2">
-                        <label className="text-xs font-medium text-gray-600 mb-1 block">Nombre del servicio</label>
-                        <input
-                          className="w-full px-3 py-2 rounded-xl border-2 border-gray-200 focus:border-green-400 focus:ring-2 focus:ring-green-100 transition-all duration-200 outline-none"
-                          placeholder="Ej. Reparación de nevera"
-                          value={s.nombre}
-                          onChange={(e) => setServicio(i, { nombre: e.target.value })}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-gray-600 mb-1 block">Precio sugerido (COP)</label>
-                        <div className="flex gap-2">
-                          <input
-                            type="number"
-                            className="flex-1 px-3 py-2 rounded-xl border-2 border-gray-200 focus:border-green-400 focus:ring-2 focus:ring-green-100 transition-all duration-200 outline-none"
-                            placeholder="50000"
-                            value={s.precioSugerido}
-                            onChange={(e) => setServicio(i, { precioSugerido: e.target.value })}
-                            min={0}
-                          />
-                          <button 
-                            className="px-3 py-2 rounded-xl bg-red-100 text-red-700 hover:bg-red-200 transition-colors" 
-                            onClick={() => delServicio(i)}
-                            title="Eliminar servicio"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
+                  <div key={i} className="flex items-center gap-2">
+                    <Input aria-label={`Servicio ${i + 1}`} value={s.nombre} onChange={(e) => setServicio(i, { nombre: e.target.value })} placeholder="Ej: Cambio de grifería" className="flex-1" />
+                    <div className="relative w-[140px] shrink-0">
+                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-subtle">$</span>
+                      <Input aria-label={`Precio del servicio ${i + 1}`} type="number" min="0" step="1000" inputMode="numeric" value={s.precioSugerido} onChange={(e) => setServicio(i, { precioSugerido: e.target.value })} placeholder="60000" className="pl-6" />
                     </div>
+                    <Button variant="secondary" size="icon" className="shrink-0 rounded-[10px]" aria-label={`Quitar servicio ${i + 1}`} onClick={() => set("servicios", form.servicios.filter((_, idx) => idx !== i))}>
+                      <X className="h-4 w-4" aria-hidden="true" />
+                    </Button>
                   </div>
                 ))}
-                {form.servicios.length === 0 && (
-                  <div className="text-center py-8 text-gray-500">
-                    <DollarSign className="w-12 h-12 mx-auto text-gray-300 mb-3" />
-                    <p className="font-medium">Aún no has añadido servicios</p>
-                    <p className="text-sm">Añade al menos un servicio con su precio sugerido</p>
-                  </div>
-                )}
               </div>
-            </div>
+              <Button variant="ghost" size="sm" className="mt-2.5 border border-dashed border-field text-brand-ink" onClick={() => set("servicios", [...form.servicios, { nombre: "", precioSugerido: "" }])}>
+                <Plus className="h-4 w-4" aria-hidden="true" /> Agregar servicio
+              </Button>
+            </Card>
+
+            {/* Zonas */}
+            <Card className="p-5 sm:p-6">
+              <CardTitle>Zonas donde trabajas</CardTitle>
+              <div className="flex flex-wrap gap-2" role="group" aria-label="Zonas">
+                {zonas.map((z) => {
+                  const on = form.zonasCobertura.includes(z);
+                  return (
+                    <button
+                      key={z}
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() => toggleIn("zonasCobertura", z)}
+                      className={cx(
+                        "inline-flex h-9 items-center gap-1.5 rounded-full px-3.5 text-[13px] transition-colors",
+                        on ? "bg-brand font-medium text-white" : "border border-line bg-white hover:border-brand"
+                      )}
+                    >
+                      {on && <Check className="h-3.5 w-3.5" aria-hidden="true" />}
+                      {z}
+                    </button>
+                  );
+                })}
+              </div>
+            </Card>
+
+            {/* Horario */}
+            <Card className="p-5 sm:p-6">
+              <CardTitle>Horario reservable</CardTitle>
+              <p className="-mt-2 mb-4 text-[13px] text-subtle">Los clientes solo pueden reservar dentro de estas horas.</p>
+              <HorarioEditor value={form.horarios} onChange={(h) => set("horarios", h)} />
+              <label className="mt-4 flex min-h-11 items-center justify-between gap-3 rounded-xl bg-canvas px-4 text-sm">
+                <span>
+                  <span className="block font-medium">Disponible para nuevos trabajos</span>
+                  <span className="block text-xs text-subtle">Si lo apagas, avisamos a los clientes que estás con la agenda llena.</span>
+                </span>
+                <input type="checkbox" checked={!!form.disponible} onChange={(e) => set("disponible", e.target.checked)} className="h-5 w-5 shrink-0 accent-brand" />
+              </label>
+              <Field label="Nota sobre tu disponibilidad" optional className="mt-4">
+                {(id) => <Input id={id} value={form.disponibilidadTxt} onChange={(e) => set("disponibilidadTxt", e.target.value)} placeholder="Ej: urgencias los domingos con recargo" />}
+              </Field>
+            </Card>
 
             {/* Certificaciones */}
-            <div className="bg-white rounded-3xl shadow-xl border border-white/20 backdrop-blur-sm p-8">
-              <div className="flex items-center gap-3 mb-6">
-                <Award className="w-6 h-6 text-purple-600" />
-                <h3 className="text-xl font-bold text-gray-900">Certificaciones</h3>
-                <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-lg">Opcional</span>
+            <Card className="p-5 sm:p-6">
+              <CardTitle>Certificaciones <span className="font-normal text-subtle">(opcional)</span></CardTitle>
+              <CertificacionesEditor value={form.certificaciones} onChange={(arr) => set("certificaciones", arr)} />
+            </Card>
+          </div>
+
+          {/* Columna lateral */}
+          <aside className="flex w-full flex-[1_1_280px] flex-col gap-3 lg:sticky lg:top-24 lg:max-w-[320px]">
+            <Card className="p-5">
+              <h2 className="text-[15px] font-semibold">{publicado ? "Tu perfil está publicado" : "Para publicar tu perfil"}</h2>
+              <div className="mt-2.5 flex justify-between text-[13px] text-muted">
+                <span>{checklist.done} de {checklist.items.length} listos</span>
+                <span>{Math.round((checklist.done / checklist.items.length) * 100)}%</span>
               </div>
-              
-              <CertificacionesEditor
-                value={form.certificaciones}
-                onChange={(arr) => set("certificaciones", arr)}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Botones de acción finales */}
-        <div className="mt-8 flex flex-wrap gap-4 justify-center">
-          <button 
-            onClick={onSave} 
-            disabled={saving || pubLoading} 
-            className="inline-flex items-center gap-2 px-8 py-4 rounded-2xl bg-white border-2 border-gray-200 hover:border-gray-300 hover:shadow-lg transition-all duration-200 font-semibold text-lg"
-          >
-            <Save className="w-5 h-5" /> 
-            {saving ? "Guardando cambios…" : "Guardar Cambios"}
-          </button>
-
-          {!docTech?.publicado ? (
-            <button 
-              onClick={onPublish} 
-              disabled={saving || pubLoading || !checklist.all} 
-              className={`inline-flex items-center gap-2 px-8 py-4 rounded-2xl text-white shadow-xl hover:shadow-2xl transition-all duration-200 font-semibold text-lg transform hover:scale-105 ${
-                checklist.all 
-                  ? "bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-700 hover:via-teal-700 hover:to-cyan-700" 
-                  : "bg-gray-400 cursor-not-allowed"
-              }`}
-            >
-              <Globe className="w-5 h-5" /> 
-              {pubLoading ? "Publicando perfil…" : "Publicar en Catálogo"}
-            </button>
-          ) : (
-            <button 
-              onClick={onUnpublish} 
-              disabled={saving || pubLoading} 
-              className="inline-flex items-center gap-2 px-8 py-4 rounded-2xl bg-gradient-to-r from-gray-700 to-gray-900 hover:from-gray-800 hover:to-black text-white shadow-xl hover:shadow-2xl transition-all duration-200 font-semibold text-lg"
-            >
-              <X className="w-5 h-5" /> 
-              {pubLoading ? "Ocultando perfil…" : "Ocultar del Catálogo"}
-            </button>
-          )}
-        </div>
-        </>
-        )}
-
-        {/* Payments Tab */}
-        {activeTab === "payments" && (
-          <div className="bg-white rounded-3xl shadow-xl border border-white/20 backdrop-blur-sm p-8">
-            <TechnicianPaymentsTab technicianId={tid} />
-          </div>
-        )}
-
-        {/* Reviews Tab */}
-        {activeTab === "reviews" && (
-          <div className="bg-white rounded-3xl shadow-xl border border-white/20 backdrop-blur-sm p-8">
-            <ReviewsTab reviews={reviews} reviewsLoading={reviewsLoading} />
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// =======================================
-//   Subcomponente: ReviewsTab (Technician)
-// =======================================
-function ReviewsTab({ reviews, reviewsLoading }) {
-  if (reviewsLoading) {
-    return (
-      <div className="flex justify-center items-center py-12">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-500"></div>
-      </div>
-    );
-  }
-
-  if (!reviews || reviews.length === 0) {
-    return (
-      <div className="text-center py-12">
-        <MessageSquare className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-        <h3 className="text-xl font-semibold text-gray-600">No tienes reseñas aún</h3>
-        <p className="text-gray-500 mt-2">Las reseñas de tus clientes aparecerán aquí</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-2xl p-6 border border-emerald-200">
-          <p className="text-gray-600 text-sm font-medium">Total de Reseñas</p>
-          <p className="text-3xl font-bold text-emerald-600 mt-2">{reviews.length}</p>
-        </div>
-        <div className="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-2xl p-6 border border-blue-200">
-          <p className="text-gray-600 text-sm font-medium">Calificación Promedio</p>
-          <div className="flex items-center gap-2 mt-2">
-            <p className="text-3xl font-bold text-blue-600">
-              {(reviews.reduce((sum, r) => sum + (r.rating || 0), 0) / reviews.length).toFixed(1)}
-            </p>
-            <div className="flex gap-0.5">
-              {[1, 2, 3, 4, 5].map((star) => (
-                <Star
-                  key={star}
-                  className={`w-5 h-5 ${
-                    star <= Math.round(reviews.reduce((sum, r) => sum + (r.rating || 0), 0) / reviews.length)
-                      ? "fill-yellow-400 text-yellow-400"
-                      : "text-gray-300"
-                  }`}
-                />
-              ))}
-            </div>
-          </div>
-        </div>
-        <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl p-6 border border-purple-200">
-          <p className="text-gray-600 text-sm font-medium">Clientes Satisfechos</p>
-          <p className="text-3xl font-bold text-purple-600 mt-2">
-            {reviews.filter((r) => r.rating >= 4).length}
-          </p>
-        </div>
-      </div>
-
-      <div className="space-y-4">
-        {reviews.map((review) => (
-          <div key={review.id} className="bg-gradient-to-r from-gray-50 to-white rounded-2xl border border-gray-200 p-6 hover:shadow-lg transition-shadow">
-            <div className="flex justify-between items-start mb-3">
-              <div>
-                <h4 className="font-semibold text-gray-800">{review.clientName || "Cliente"}</h4>
-                <p className="text-sm text-gray-500">
-                  {review.createdAt ? dayjs(review.createdAt.toDate()).format("D MMM YYYY, HH:mm") : "Fecha desconocida"}
-                </p>
+              <div className="mt-1.5 h-1.5 rounded bg-[#F0F0F3]" aria-hidden="true">
+                <div className="h-1.5 rounded bg-brand transition-all" style={{ width: `${(checklist.done / checklist.items.length) * 100}%` }} />
               </div>
-              <div className="flex gap-1">
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <Star
-                    key={star}
-                    className={`w-5 h-5 ${
-                      star <= review.rating
-                        ? "fill-yellow-400 text-yellow-400"
-                        : "text-gray-300"
-                    }`}
-                  />
+              <ul className="mt-3.5 flex flex-col gap-2.5 text-sm">
+                {checklist.items.map((it) => (
+                  <li key={it.key} className={cx("flex items-center gap-2.5", !it.ok && "text-muted")}>
+                    {it.ok ? (
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-ok-soft text-ok"><Check className="h-3 w-3" aria-hidden="true" /></span>
+                    ) : (
+                      <span className="h-5 w-5 rounded-full border-[1.5px] border-field" aria-hidden="true" />
+                    )}
+                    {it.label}
+                    <span className="sr-only">{it.ok ? "(listo)" : "(pendiente)"}</span>
+                  </li>
                 ))}
+              </ul>
+              {publicado ? (
+                <Button variant="secondary" className="mt-4 w-full" onClick={onUnpublish} loading={pubLoading}>Ocultar del catálogo</Button>
+              ) : (
+                <Button className="mt-4 w-full" onClick={onPublish} loading={pubLoading} disabled={!checklist.all || saving || docTech?.blocked}>
+                  Publicar perfil
+                </Button>
+              )}
+            </Card>
+
+            <Card className="p-3.5">
+              <p className="mb-2.5 text-xs text-subtle">Así se verá en el catálogo</p>
+              <div className="flex flex-col gap-1.5 rounded-xl border border-line p-2">
+                <SpecialtyCover specialty={form.especialidades[0]} src={form.fotoURL} className="h-[110px]" iconSize={36} />
+                <div className="flex justify-between px-1">
+                  <span className="text-[15px] font-bold text-brand-ink">{priceFrom(preview) ? formatCOP(priceFrom(preview)) : "Precio a convenir"}</span>
+                  <Rating value={docTech?.ratingPromedio} />
+                </div>
+                <p className="px-1 text-sm font-semibold">{form.servicios.find((s) => s.nombre)?.nombre || form.especialidades.slice(0, 2).join(" y ") || "Tu servicio principal"}</p>
+                <p className="px-1 pb-1 text-xs text-muted">Por {form.nombre || "tu nombre"}{form.zonasCobertura[0] ? ` · ${form.zonasCobertura[0]}` : ""}</p>
               </div>
-            </div>
-            {review.comment && (
-              <p className="text-gray-700 leading-relaxed">{review.comment}</p>
-            )}
-          </div>
-        ))}
-      </div>
+            </Card>
+          </aside>
+        </div>
+      )}
     </div>
   );
 }
 
-// =======================================
-//   Subcomponente: Certificaciones
-// =======================================
+/* ---------------- Reseñas ---------------- */
+function ReviewsTab({ reviews, loading }) {
+  if (loading) return <Loader label="Cargando reseñas…" />;
+  if (!reviews.length) {
+    return <EmptyState icon={MessageSquareText} title="Aún no tienes reseñas" text="Cuando tus clientes te califiquen, sus comentarios aparecerán aquí." />;
+  }
+  const avg = reviews.reduce((s, r) => s + (Number(r.rating) || 0), 0) / reviews.length;
+  const sorted = [...reviews].sort((a, b) => (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0));
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Card className="p-4"><p className="text-[13px] text-muted">Calificación promedio</p><p className="mt-1.5 flex items-center gap-2 text-2xl font-semibold">{avg.toFixed(1)} <Star className="h-5 w-5 fill-star text-star" aria-hidden="true" /></p></Card>
+        <Card className="p-4"><p className="text-[13px] text-muted">Reseñas</p><p className="mt-1.5 text-2xl font-semibold">{reviews.length}</p></Card>
+        <Card className="p-4"><p className="text-[13px] text-muted">De 4 estrellas o más</p><p className="mt-1.5 text-2xl font-semibold">{reviews.filter((r) => r.rating >= 4).length}</p></Card>
+      </div>
+      <Card className="overflow-hidden">
+        <ul>
+          {sorted.map((r) => (
+            <li key={r.id} className="border-t border-[#F0F0F3] px-5 py-4 first:border-t-0">
+              <div className="flex items-center gap-2.5">
+                <Avatar name={r.clientName} size={32} />
+                <div className="flex-1">
+                  <p className="text-sm font-medium">{r.clientName || "Cliente"}</p>
+                  {r.createdAt?.toDate && <p className="text-xs text-subtle">{dayjs(r.createdAt.toDate()).format("D MMM YYYY")}</p>}
+                </div>
+                <span className="flex gap-0.5" aria-label={`${r.rating} de 5 estrellas`}>
+                  {[1, 2, 3, 4, 5].map((n) => <Star key={n} className={cx("h-4 w-4", n <= r.rating ? "fill-star text-star" : "text-line")} aria-hidden="true" />)}
+                </span>
+              </div>
+              {r.comment && <p className="mt-2.5 text-sm leading-relaxed text-[#3F3F46]">{r.comment}</p>}
+            </li>
+          ))}
+        </ul>
+      </Card>
+    </div>
+  );
+}
+
+/* ---------------- Certificaciones ---------------- */
 function CertificacionesEditor({ value = [], onChange }) {
   const [input, setInput] = useState("");
-  
   const add = () => {
     const v = input.trim();
     if (!v) return;
     onChange([...(value || []), v]);
     setInput("");
   };
-  
-  const remove = (i) => onChange((value || []).filter((_, idx) => idx !== i));
-
   return (
-    <div className="space-y-4">
-      <div className="flex gap-3">
-        <input
-          className="flex-1 px-4 py-3 rounded-2xl border-2 border-gray-200 focus:border-purple-400 focus:ring-4 focus:ring-purple-100 transition-all duration-200 outline-none"
+    <div>
+      <div className="flex gap-2">
+        <Input
+          aria-label="Nueva certificación"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Ej: Certificado RETIE, EPA, Curso Refrigeración, SENA..."
-          onKeyDown={(e) => { 
-            if (e.key === "Enter") { 
-              e.preventDefault(); 
-              add(); 
-            } 
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              add();
+            }
           }}
+          placeholder="Ej: Técnico en refrigeración — SENA"
         />
-        <button 
-          type="button" 
-          className="px-6 py-3 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-medium shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105" 
-          onClick={add}
-        >
-          <Plus className="w-4 h-4" />
-        </button>
+        <Button variant="secondary" onClick={add}>Agregar</Button>
       </div>
-      
-      <div className="flex flex-wrap gap-3">
-        {(value || []).map((c, i) => (
-          <div key={i} className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-100 to-indigo-100 text-purple-800 rounded-2xl border border-purple-200 shadow-sm">
-            <Award className="w-4 h-4" />
-            <span className="font-medium">{c}</span>
-            <button 
-              className="w-5 h-5 rounded-full bg-purple-200 hover:bg-purple-300 flex items-center justify-center transition-colors" 
-              onClick={() => remove(i)}
-              title="Eliminar certificación"
-            >
-              <X className="w-3 h-3 text-purple-700" />
-            </button>
+      {value.length > 0 && (
+        <ul className="mt-3 flex flex-wrap gap-2">
+          {value.map((c, i) => (
+            <li key={i} className="inline-flex items-center gap-1.5 rounded-full bg-canvas py-1.5 pl-3 pr-1.5 text-[13px]">
+              {typeof c === "string" ? c : c?.nombre}
+              <button type="button" aria-label={`Quitar ${typeof c === "string" ? c : c?.nombre}`} onClick={() => onChange(value.filter((_, idx) => idx !== i))} className="flex h-6 w-6 items-center justify-center rounded-full text-subtle hover:bg-white hover:text-ink">
+                <X className="h-3.5 w-3.5" aria-hidden="true" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/* ---------------- Horario ---------------- */
+const DIAS_SEMANA = [
+  ["lun", "Lunes"], ["mar", "Martes"], ["mie", "Miércoles"], ["jue", "Jueves"],
+  ["vie", "Viernes"], ["sab", "Sábado"], ["dom", "Domingo"],
+];
+const HORAS = Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, "0")}:00`);
+
+function HorarioEditor({ value, onChange }) {
+  const horarios = value || {};
+  const update = (dia, franja) => onChange({ ...horarios, [dia]: franja ? [franja] : [] });
+
+  return (
+    <div className="flex flex-col gap-1.5 text-sm">
+      {DIAS_SEMANA.map(([key, label]) => {
+        const franja = horarios[key]?.[0] || null;
+        return (
+          <div key={key} className={cx("flex min-h-11 flex-wrap items-center gap-3 rounded-[10px] px-3", franja ? "bg-canvas" : "")}>
+            <label className="flex w-[120px] items-center gap-2 font-medium">
+              <input
+                type="checkbox"
+                checked={!!franja}
+                onChange={(e) => update(key, e.target.checked ? { inicio: "08:00", fin: "18:00" } : null)}
+                className="h-[18px] w-[18px] accent-brand"
+              />
+              {label}
+            </label>
+            {franja ? (
+              <span className="flex items-center gap-2">
+                <select
+                  aria-label={`${label}: desde`}
+                  value={franja.inicio}
+                  onChange={(e) => {
+                    const inicio = e.target.value;
+                    const fin = franja.fin > inicio ? franja.fin : HORAS[Math.min(HORAS.indexOf(inicio) + 1, 23)];
+                    update(key, { inicio, fin });
+                  }}
+                  className="h-9 rounded-lg border border-field bg-white px-2 text-[13px]"
+                >
+                  {HORAS.slice(0, 23).map((h) => <option key={h} value={h}>{h}</option>)}
+                </select>
+                <span className="text-subtle">a</span>
+                <select
+                  aria-label={`${label}: hasta`}
+                  value={franja.fin}
+                  onChange={(e) => update(key, { inicio: franja.inicio, fin: e.target.value })}
+                  className="h-9 rounded-lg border border-field bg-white px-2 text-[13px]"
+                >
+                  {HORAS.filter((h) => h > franja.inicio).map((h) => <option key={h} value={h}>{h}</option>)}
+                </select>
+              </span>
+            ) : (
+              <span className="text-[13px] text-subtle">No atiende</span>
+            )}
           </div>
-        ))}
-        {(!value || value.length === 0) && (
-          <div className="text-center py-6 text-gray-500 w-full">
-            <Award className="w-12 h-12 mx-auto text-gray-300 mb-3" />
-            <p className="font-medium">Sin certificaciones añadidas</p>
-            <p className="text-sm">Las certificaciones ayudan a generar más confianza</p>
-          </div>
-        )}
-      </div>
+        );
+      })}
     </div>
   );
 }
