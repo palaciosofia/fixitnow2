@@ -1,10 +1,9 @@
 // src/Pages/Auth/Auth.jsx
-import { Outlet } from "react-router-dom";
+import { Navigate, Outlet, useLocation } from "react-router-dom";
 
 export default function Auth() {
-  return (
-    <div className="min-h-[70vh]">
-      <Outlet />
-    </div>
-  );
+  const { pathname } = useLocation();
+  // /auth sin subruta → inicio de sesión
+  if (pathname.replace(/\/$/, "") === "/auth") return <Navigate to="/auth/login" replace />;
+  return <Outlet />;
 }

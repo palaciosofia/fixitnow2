@@ -1,3 +1,38 @@
+# Rediseño de la interfaz
+
+Todo el frontend se rehízo con un estilo más limpio (tipo marketplace): fondo gris claro,
+tarjetas blancas, morado como color principal y tipografía Geist. La lógica de Firebase
+(reservas, pagos, mensajes, reseñas, roles) es la misma de la revisión anterior.
+
+- **Kit de interfaz propio** (`src/ui/`): botones, campos, tarjetas, insignias, modales
+  accesibles (Escape, foco), avatares, calificación, pestañas y estados vacíos. Los colores
+  viven en tokens de `index.css`.
+- **Marco nuevo** (`src/layout/`): visitantes ven header + footer; con sesión hay menú
+  lateral según el rol (cliente, técnico, admin), búsqueda global, aviso de mensajes sin
+  leer y, en celular, barra de navegación inferior.
+- **Inicio**: buscador con especialidad, categorías, técnicos mejor calificados, cómo
+  funciona, reseñas y franja para técnicos.
+- **Catálogo**: tarjetas con portada por especialidad, precio "desde", calificación y
+  disponibilidad; chips de especialidad, filtros de ciudad, precio y calificación (se
+  guardan en la URL); la búsqueda también mira bio, zonas y servicios.
+- **Perfil del técnico**: encabezado con foto, estadísticas, servicios con precio, zonas,
+  horario, certificaciones y reseñas con distribución; panel de reserva con días y horas
+  reales del técnico (en celular, botón "Reservar" que baja al panel).
+- **Registro / login**: elección de rol con tarjetas, ciudad y barrio, mensajes de error
+  claros, mostrar contraseña.
+- **Mis reservas, pagos, perfil, mensajes y reseñas** del cliente rediseñados; el chat es
+  de dos paneles con separadores por día y confirmación de lectura.
+- **Panel del técnico**: editor por secciones (foto, presentación, especialidades,
+  servicios con precio, zonas, horario por día, certificaciones) con lista de lo que falta
+  para publicar y vista previa de la tarjeta.
+- **Agenda**: tablero semanal por horas con colores por estado, vista lista y panel de
+  detalle para aceptar, marcar pagada, completar o rechazar.
+- **Administración**: indicadores, tablas de técnicos y usuarios con búsqueda y filtros.
+- **Limpieza**: se quitaron framer-motion, react-slick, react-countup y otros paquetes que
+  ya no se usan, además de componentes e imágenes viejas.
+
+---
+
 # Cambios de esta revisión
 
 ## Bugs corregidos

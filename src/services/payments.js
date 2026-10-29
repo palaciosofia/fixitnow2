@@ -28,6 +28,7 @@ import {
 } from "firebase/firestore";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { formatCOP } from "../utils/money";
+import { priceFrom } from "../utils/catalog";
 
 export const BOOKINGS = "reservas";
 const PAYMENTS = "payments";
@@ -55,15 +56,7 @@ const PAYMENTS = "payments";
 
 /** Calcula el monto de una reserva a partir del perfil del técnico. */
 export function getBookingAmount(tech) {
-  const base = Number(tech?.tarifaBase);
-  if (Number.isFinite(base) && base > 0) return Math.round(base);
-
-  const precios = (tech?.servicios || [])
-    .map((s) => Number(s?.precioSugerido))
-    .filter((n) => Number.isFinite(n) && n > 0);
-  if (precios.length) return Math.round(Math.min(...precios));
-
-  return 0; // sin precio definido: se acuerda con el técnico
+  return priceFrom(tech); // se acuerda con el técnico si es 0
 }
 
 /** Actualiza la copia del estado de pago en la reserva (si existe). */

@@ -1,29 +1,31 @@
 // src/Pages/Technicians/Profile.jsx
-import { useEffect, useState, useMemo } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { getTechBySlug } from "../../services/technicians";
-import { Star, Phone, Award, MapPin } from "lucide-react";
-
-import { formatCOP } from "../../utils/money";
-
-// ⬇️ Fallbacks directos a Firestore por id o por slug
+// Perfil público del técnico (por slug o id) con el cuadro de reserva al lado.
+import { useEffect, useMemo, useState } from "react";
+import { Link, useParams } from "react-router-dom";
+import { doc, getDoc, collection, query, where, limit, getDocs } from "firebase/firestore";
+import { MessageCircle, Phone, Award, MapPin, Clock, UserX, CalendarCheck } from "lucide-react";
+import dayjs from "dayjs";
 import { db } from "../../firebase";
-import {
-  doc,
-  getDoc,
-  collection,
-  query,
-  where,
-  limit,
-  getDocs,
-} from "firebase/firestore";
+import { getTechBySlug } from "../../services/technicians";
+import { getTechnicianReviews } from "../../services/reviews";
+import { useAuth } from "../../context/AuthProvider";
+import BookingPanel from "../../Components/BookingPanel";
+import { Avatar, Badge, Button, Card, CardTitle, EmptyState, Rating, SpecialtyCover, Verified } from "../../ui";
+import { formatCOP } from "../../utils/money";
+import { priceFrom } from "../../utils/catalog";
+import { cx } from "../../ui/cx";
+
+const DIAS = [
+  ["lun", "Lunes"], ["mar", "Martes"], ["mie", "Miércoles"], ["jue", "Jueves"],
+  ["vie", "Viernes"], ["sab", "Sábado"], ["dom", "Domingo"],
+];
 
 export default function Profile() {
   const { slug } = useParams(); // puede ser slug o id
-  const nav = useNavigate();
-
+  const { user } = useAuth();
   const [tech, setTech] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [reviews, setReviews] = useState([]);
 
   useEffect(() => {
     if (!slug) {
@@ -31,286 +33,291 @@ export default function Profile() {
       setLoading(false);
       return;
     }
-
+    let alive = true;
     (async () => {
       setLoading(true);
-
-      
       let t = null;
+      // 1) Por slug (solo publicados)
       try {
         t = await getTechBySlug(slug);
       } catch {
-        // ignoramos error del servicio y seguimos con fallback
+        /* sigue con los otros intentos */
       }
-
-      // 2) Si no llegó nada, probar como ID del documento
+      // 2) Como ID del documento
       if (!t) {
         try {
           const snap = await getDoc(doc(db, "technicians", slug));
-          if (snap.exists()) {
-            t = { id: snap.id, ...snap.data() };
-          }
+          if (snap.exists()) t = { id: snap.id, ...snap.data() };
         } catch {
-          // ignore
+          /* sin permiso o no existe */
         }
       }
-
-      // 3) Si tampoco, probar query por campo slug
+      // 3) Por campo slug sin filtrar publicado (el dueño viendo su perfil)
       if (!t) {
         try {
-          const q = query(
-            collection(db, "technicians"),
-            where("slug", "==", slug),
-            limit(1)
-          );
-          const qs = await getDocs(q);
-          if (!qs.empty) {
-            const d = qs.docs[0];
-            t = { id: d.id, ...d.data() };
-          }
+          const qs = await getDocs(query(collection(db, "technicians"), where("slug", "==", slug), limit(1)));
+          if (!qs.empty) t = { id: qs.docs[0].id, ...qs.docs[0].data() };
         } catch {
-          // ignore
+          /* sin permiso */
         }
       }
-
-      setTech(t || null);
+      if (!alive) return;
+      setTech(t);
       setLoading(false);
+      if (t) {
+        getTechnicianReviews(t.id || t.uid).then((r) => alive && setReviews(r)).catch(() => {});
+      }
     })();
+    return () => {
+      alive = false;
+    };
   }, [slug]);
 
-  const phoneLink = useMemo(() => {
-    const raw = (tech?.telefono || "").replace(/\D/g, "");
-    return raw ? `https://wa.me/${raw}` : null;
-  }, [tech]);
+  const sortedReviews = useMemo(
+    () => [...reviews].sort((a, b) => (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0)),
+    [reviews]
+  );
+  const dist = useMemo(() => {
+    const d = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
+    reviews.forEach((r) => {
+      const n = Math.round(Number(r.rating) || 0);
+      if (d[n] != null) d[n] += 1;
+    });
+    return d;
+  }, [reviews]);
 
   if (loading) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-8">
-        <div className="h-24 w-24 rounded-full bg-gray-200 animate-pulse mb-4" />
-        <div className="h-6 w-64 bg-gray-200 animate-pulse mb-2" />
-        <div className="h-4 w-96 bg-gray-200 animate-pulse" />
+      <div className="grid gap-5 lg:grid-cols-[1fr_360px]" aria-hidden="true">
+        <div className="h-[420px] animate-pulse rounded-2xl bg-white" />
+        <div className="h-[520px] animate-pulse rounded-2xl bg-white" />
       </div>
     );
   }
 
   if (!tech) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-12">
-        <h1 className="text-xl font-semibold mb-2">Perfil no disponible</h1>
-        <p className="text-gray-600 mb-4">
-          El técnico no existe o no está publicado.
-        </p>
-        <button className="underline" onClick={() => nav("/tecnicos")}>
-          Volver al catálogo
-        </button>
-      </div>
+      <EmptyState
+        icon={UserX}
+        title="Perfil no disponible"
+        text="Este técnico no existe o todavía no publicó su perfil."
+        action={<Button to="/tecnicos">Volver al catálogo</Button>}
+      />
     );
   }
 
-  const foto =
-    tech.fotoURL || tech.fotoUrl || "https://via.placeholder.com/800x400?text=Tecnico";
   const nombre = tech.nombre || "Técnico";
-  const ciudad = tech.ciudad || "—";
-  const barrio = tech.barrio ? ` • ${tech.barrio}` : "";
-  const rating =
-    Number.isFinite(tech.ratingPromedio) ? Number(tech.ratingPromedio).toFixed(1) : "—";
-  const reseñas = tech["reseñasCount"] ?? 0;
-  const especialidades = Array.isArray(tech.especialidades) ? tech.especialidades : [];
-  const servicios = Array.isArray(tech.servicios) ? tech.servicios : [];
-  const certificaciones = Array.isArray(tech.certificaciones) ? tech.certificaciones : [];
-  const licencias = Array.isArray(tech.licencias) ? tech.licencias : [];
-  const zonasCobertura = Array.isArray(tech.zonasCobertura) ? tech.zonasCobertura : [];
-
-  // Asegurar que tengamos id de doc para reservar
-  const tid = tech.id || tech.uid || null;
+  const foto = tech.fotoURL || tech.fotoUrl || "";
+  const especialidades = tech.especialidades || [];
+  const servicios = (tech.servicios || []).filter((s) => s?.nombre);
+  const zonas = tech.zonasCobertura || [];
+  const certificaciones = tech.certificaciones || [];
+  const anios = Number(tech.aniosExperiencia ?? tech.añosExperiencia) || 0;
+  const precio = priceFrom(tech);
+  const tid = tech.id || tech.uid;
+  const whatsapp = (tech.telefono || "").replace(/\D/g, "");
+  const esPropio = user && tech.uid === user.uid;
+  const ratingCount = tech["reseñasCount"] ?? reviews.length;
+  const horarios = tech.horarios && typeof tech.horarios === "object" ? tech.horarios : null;
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
-      {/* Header hero: imagen de fondo, avatar y acciones */}
-      <div className="rounded-2xl overflow-hidden shadow-sm mb-6 bg-gradient-to-b from-white to-gray-50">
-        <div className="relative">
-          <div
-            className="w-full h-40 md:h-56 bg-center bg-cover"
-            style={{ backgroundImage: `url(${foto})`, filter: "brightness(0.75)" }}
-            aria-hidden
-          />
-          <div className="absolute inset-0 flex items-end p-4 md:p-6">
-            <div className="flex items-center gap-4 bg-white/80 backdrop-blur-sm rounded-xl p-3 md:p-4 w-full">
-              <img src={foto} alt={nombre} className="w-20 h-20 rounded-full object-cover border-2 border-white" />
-              <div className="flex-1">
-                <h1 className="text-2xl md:text-3xl font-bold leading-tight">{nombre}</h1>
-                <div className="flex items-center gap-3 mt-1 flex-wrap">
-                  <span className="text-sm text-gray-600 flex items-center gap-1"><MapPin className="w-4 h-4 text-gray-500" /> {ciudad}{barrio}</span>
-                  <span className="text-sm text-amber-600 flex items-center gap-1"><Star className="w-4 h-4" /> {rating} <span className="text-xs text-gray-500">({reseñas})</span></span>
-                  {Number.isFinite(tech.añosExperiencia) && <span className="text-xs px-2 py-0.5 rounded bg-gray-100">{tech.añosExperiencia} año{tech.añosExperiencia === 1 ? "" : "s"}</span>}
-                  {tech.verificado && <span className="text-xs px-2 py-0.5 rounded bg-emerald-100 text-emerald-700">Verificado</span>}
+    <div>
+      <nav aria-label="Ruta" className="mb-4 flex flex-wrap gap-1.5 text-[13px] text-subtle">
+        <Link to="/tecnicos" className="hover:text-ink">Técnicos</Link>
+        {especialidades[0] && (
+          <>
+            <span aria-hidden="true">/</span>
+            <Link to={`/tecnicos?esp=${encodeURIComponent(especialidades[0])}`} className="hover:text-ink">{especialidades[0]}</Link>
+          </>
+        )}
+        <span aria-hidden="true">/</span>
+        <span className="text-ink">{nombre}</span>
+      </nav>
+
+      {esPropio && !tech.publicado && (
+        <p className="mb-4 rounded-xl bg-warn-soft px-4 py-3 text-sm text-warn">
+          Así se verá tu perfil. Todavía no está publicado: <Link to="/mi-perfil" className="font-semibold underline">complétalo aquí</Link>.
+        </p>
+      )}
+
+      <div className="flex flex-wrap items-start gap-5">
+        {/* Columna principal */}
+        <div className="flex min-w-0 flex-[999_1_460px] flex-col gap-4">
+          <Card className="overflow-hidden">
+            <SpecialtyCover specialty={especialidades[0]} className="h-[140px] rounded-none" iconSize={64} />
+            <div className="px-5 pb-5 sm:px-6">
+              <div className="relative -mt-11">
+                <Avatar name={nombre} src={foto} size={88} className="border-4 border-white" />
+              </div>
+              <div className="mt-3 flex flex-wrap items-end gap-4">
+                <div className="min-w-[200px] flex-1">
+                  <h1 className="flex items-center gap-2 text-2xl font-semibold">
+                    {nombre} {tech.publicado && <Verified className="h-[18px] w-[18px]" />}
+                  </h1>
+                  <p className="mt-1 text-sm text-muted">
+                    {[especialidades.slice(0, 2).join(" · "), anios ? `${anios} años de experiencia` : null, tech.ciudad].filter(Boolean).join(" · ")}
+                  </p>
                 </div>
-                {!!especialidades.length && (
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {especialidades.map((e, i) => (
-                      <span key={i} className="text-xs bg-gray-100 rounded px-2 py-0.5">{e}</span>
+                <div className="flex flex-wrap gap-2">
+                  {!esPropio && (
+                    <Button href="#reservar" className="lg:hidden">
+                      <CalendarCheck className="h-4 w-4" aria-hidden="true" /> Reservar
+                    </Button>
+                  )}
+                  {user && !esPropio && (
+                    <Button variant="secondary" to={`/chat/${tech.uid || tid}/${encodeURIComponent(nombre)}`}>
+                      <MessageCircle className="h-4 w-4" aria-hidden="true" /> Escribir
+                    </Button>
+                  )}
+                  {whatsapp && (
+                    <Button variant="secondary" href={`https://wa.me/${whatsapp}`} target="_blank" rel="noreferrer">
+                      <Phone className="h-4 w-4" aria-hidden="true" /> WhatsApp
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              <dl className="mt-5 flex flex-wrap gap-x-8 gap-y-3 text-[13px] text-muted">
+                <div>
+                  <dt className="sr-only">Calificación</dt>
+                  <dd className="text-lg font-semibold text-ink"><Rating value={tech.ratingPromedio} className="text-lg" /></dd>
+                  <dd>{ratingCount} {ratingCount === 1 ? "reseña" : "reseñas"}</dd>
+                </div>
+                <div>
+                  <dt className="sr-only">Precio</dt>
+                  <dd className="text-lg font-semibold text-ink">{precio ? formatCOP(precio) : "A convenir"}</dd>
+                  <dd>precio desde</dd>
+                </div>
+                <div>
+                  <dt className="sr-only">Disponibilidad</dt>
+                  <dd className={cx("text-lg font-semibold", tech.disponible === false ? "text-muted" : "text-ok")}>
+                    {tech.disponible === false ? "Agenda llena" : "Disponible"}
+                  </dd>
+                  <dd>para nuevos trabajos</dd>
+                </div>
+              </dl>
+
+              {(tech.bioCorta || tech.descripcion) && (
+                <p className="mt-5 whitespace-pre-line text-sm leading-relaxed text-[#3F3F46]">{tech.bioCorta || tech.descripcion}</p>
+              )}
+            </div>
+          </Card>
+
+          {(servicios.length > 0 || zonas.length > 0) && (
+            <Card className="p-5 sm:p-6">
+              <CardTitle>Servicios y precios</CardTitle>
+              {servicios.length > 0 ? (
+                <ul>
+                  {servicios.map((s) => (
+                    <li key={s.nombre} className="flex justify-between gap-4 border-t border-[#F0F0F3] py-3 text-sm">
+                      <span>{s.nombre}</span>
+                      <span className="font-semibold">{Number(s.precioSugerido) > 0 ? formatCOP(s.precioSugerido) : "A convenir"}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-muted">El técnico aún no publica sus precios. Pregúntale por chat.</p>
+              )}
+              {zonas.length > 0 && (
+                <div className="mt-4">
+                  <p className="mb-2 flex items-center gap-1.5 text-[13px] font-medium"><MapPin className="h-4 w-4" aria-hidden="true" /> Zonas donde trabaja</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {zonas.map((z) => <Badge key={z}>{z}</Badge>)}
+                  </div>
+                </div>
+              )}
+            </Card>
+          )}
+
+          {(horarios || certificaciones.length > 0) && (
+            <div className="grid gap-4 md:grid-cols-2">
+              {horarios && (
+                <Card className="p-5">
+                  <CardTitle><span className="flex items-center gap-2"><Clock className="h-4 w-4" aria-hidden="true" /> Horario</span></CardTitle>
+                  <ul className="text-sm">
+                    {DIAS.map(([k, label]) => {
+                      const f = (horarios[k] || [])[0];
+                      return (
+                        <li key={k} className="flex justify-between py-1.5">
+                          <span className="text-muted">{label}</span>
+                          <span className={f ? "font-medium" : "text-subtle"}>{f ? `${f.inicio} – ${f.fin}` : "No atiende"}</span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </Card>
+              )}
+              {certificaciones.length > 0 && (
+                <Card className="p-5">
+                  <CardTitle><span className="flex items-center gap-2"><Award className="h-4 w-4" aria-hidden="true" /> Certificaciones</span></CardTitle>
+                  <ul className="flex flex-col gap-2 text-sm">
+                    {certificaciones.map((c, i) => (
+                      <li key={i} className="rounded-lg bg-canvas px-3 py-2">{typeof c === "string" ? c : c?.nombre || c?.titulo}</li>
+                    ))}
+                  </ul>
+                </Card>
+              )}
+            </div>
+          )}
+
+          <Card className="p-5 sm:p-6">
+            <CardTitle>Reseñas</CardTitle>
+            {reviews.length === 0 ? (
+              <p className="text-sm text-muted">Todavía no tiene reseñas.</p>
+            ) : (
+              <>
+                <div className="flex flex-wrap items-center gap-7">
+                  <div>
+                    <p className="text-[40px] font-semibold leading-none tracking-tight">{Number(tech.ratingPromedio || 0).toFixed(1)}</p>
+                    <p className="mt-1 text-[13px] text-muted">{reviews.length} {reviews.length === 1 ? "reseña" : "reseñas"}</p>
+                  </div>
+                  <div className="flex min-w-[220px] flex-1 flex-col gap-1.5 text-xs text-muted">
+                    {[5, 4, 3, 2, 1].map((n) => (
+                      <div key={n} className="flex items-center gap-2.5">
+                        <span className="w-3">{n}</span>
+                        <span className="h-1.5 flex-1 rounded bg-[#F0F0F3]">
+                          <span className="block h-1.5 rounded bg-brand" style={{ width: `${(dist[n] / reviews.length) * 100}%` }} />
+                        </span>
+                        <span className="w-5 text-right">{dist[n]}</span>
+                      </div>
                     ))}
                   </div>
-                )}
-              </div>
+                </div>
+                <ul className="mt-2">
+                  {sortedReviews.slice(0, 6).map((r) => (
+                    <li key={r.id} className="mt-4 border-t border-[#F0F0F3] pt-4">
+                      <div className="flex items-center gap-2.5">
+                        <Avatar name={r.clientName} size={32} />
+                        <div className="flex-1">
+                          <p className="text-sm font-medium">{r.clientName || "Cliente"}</p>
+                          {r.createdAt?.toDate && <p className="text-xs text-subtle">{dayjs(r.createdAt.toDate()).fromNow()}</p>}
+                        </div>
+                        <span className="text-[13px] text-star" aria-label={`${r.rating} de 5 estrellas`}>
+                          {"★".repeat(Math.round(r.rating || 0))}
+                          <span className="text-line">{"★".repeat(5 - Math.round(r.rating || 0))}</span>
+                        </span>
+                      </div>
+                      {r.comment && <p className="mt-2.5 text-sm leading-relaxed text-[#3F3F46]">{r.comment}</p>}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </Card>
+        </div>
 
-              <div className="flex flex-col items-end gap-2">
-                <button
-                  className="px-4 py-2 rounded-full bg-gradient-to-r from-teal-600 to-emerald-400 text-white font-semibold shadow"
-                  disabled={!tid}
-                  onClick={() => tid && nav(`/agendar/${tid}`)}
-                >
-                  Reservar
-                </button>
-                {phoneLink ? (
-                  <a href={phoneLink} target="_blank" rel="noreferrer" className="text-sm text-gray-700 bg-white px-3 py-1 rounded-full border">Contactar</a>
-                ) : null}
-              </div>
-            </div>
-          </div>
+        {/* Reservar */}
+        <div id="reservar" className="w-full min-w-0 scroll-mt-20 flex-[1_1_320px] lg:sticky lg:top-24 lg:max-w-[360px]">
+          {esPropio ? (
+            <Card className="p-5">
+              <p className="text-sm text-muted">Este es tu perfil. Los clientes reservan desde aquí.</p>
+              <Button to="/mi-perfil" className="mt-4 w-full">Editar mi perfil</Button>
+            </Card>
+          ) : (
+            <BookingPanel tech={{ ...tech, id: tid }} />
+          )}
         </div>
       </div>
-
-      {/* Sobre mí */}
-      {tech.bioCorta && (
-        <section className="mt-6">
-          <h2 className="font-semibold mb-2">Sobre mí</h2>
-          <p className="text-gray-700">{tech.bioCorta}</p>
-        </section>
-      )}
-
-      {/* Servicios y tarifas: tarjetas horizontales más visuales */}
-      {!!servicios.length && (
-        <section className="mt-6">
-          <h2 className="font-semibold mb-4">Servicios y tarifas</h2>
-          <div className="grid gap-4">
-            {servicios.map((s, i) => (
-              <div key={i} className="bg-white rounded-xl border p-4 flex items-center justify-between gap-4 shadow-sm">
-                <div className="flex-1 pr-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="font-medium text-lg">{s?.nombre || "Servicio"}</div>
-                    <div className="text-xs text-gray-500">{s?.codigo || ""}</div>
-                  </div>
-                  {s?.descripcion && <div className="text-sm text-gray-600 mt-1">{s.descripcion}</div>}
-                  <div className="text-xs text-gray-500 mt-2">{s?.tarifa ? `Tipo: ${s.tarifa}` : ""}</div>
-                </div>
-
-                <div className="flex flex-col items-end gap-3">
-                  <div className="text-xs text-gray-500">Desde</div>
-                  <div className="text-lg font-semibold">{formatMoney(s?.precioSugerido)}</div>
-                  <button
-                    onClick={() => tid && nav(`/agendar/${tid}`)}
-                    className="mt-2 px-3 py-1 rounded-full bg-emerald-600 text-white text-sm"
-                    disabled={!tid}
-                  >
-                    Reservar
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Certificaciones y licencias (cards) */}
-      {(!!certificaciones.length || !!licencias.length) && (
-        <section className="mt-6 grid md:grid-cols-2 gap-4">
-          {!!certificaciones.length && (
-            <div className="bg-white rounded-xl border p-4 shadow-sm">
-              <div className="flex items-center gap-2 mb-2">
-                <Award className="w-5 h-5 text-amber-500" />
-                <h2 className="font-semibold">Certificaciones</h2>
-              </div>
-              <ul className="space-y-2 text-gray-700">
-                {certificaciones.map((c, i) => (
-                  <li key={i} className="text-sm">• {c}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {!!licencias.length && (
-            <div className="bg-white rounded-xl border p-4 shadow-sm">
-              <div className="flex items-center gap-2 mb-2">
-                <MapPin className="w-5 h-5 text-gray-500" />
-                <h2 className="font-semibold">Licencias</h2>
-              </div>
-              <ul className="space-y-2 text-gray-700">
-                {licencias.map((l, i) => (
-                  <li key={i} className="text-sm">
-                    <span className="font-medium">{l.tipo}</span>
-                    {l.entidad ? ` — ${l.entidad}` : ""}
-                    {l.numero ? ` #${l.numero}` : ""}
-                    {l.vence ? ` (vence: ${formatDate(l.vence)})` : ""}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </section>
-      )}
-
-      {/* Cobertura */}
-      {!!zonasCobertura.length && (
-        <section className="mt-6">
-          <h2 className="font-semibold mb-2">Cobertura</h2>
-          <div className="flex flex-wrap gap-1">
-            {zonasCobertura.map((z, i) => (
-              <span key={i} className="text-xs bg-gray-100 rounded px-2 py-0.5">
-                {z}
-              </span>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Disponibilidad (horarios) */}
-      {tech.horarios && (
-        <section className="mt-6">
-          <h2 className="font-semibold mb-2">Disponibilidad</h2>
-          <div className="text-sm text-gray-700 space-y-1">
-            {Object.entries(tech.horarios).map(([dia, franjas]) => (
-              <div key={dia}>
-                <span className="font-medium mr-2">{diaToLabel(dia).toUpperCase()}:</span>
-                {Array.isArray(franjas) && franjas.length > 0 ? (
-                  franjas.map((f, i) => (
-                    <span key={i} className="mr-2">
-                      {f.inicio}–{f.fin}
-                    </span>
-                  ))
-                ) : (
-                  <span>No atiende</span>
-                )}
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
     </div>
   );
-}
-
-/* ---------- helpers ---------- */
-function formatMoney(n) {
-  return formatCOP(n, "A convenir");
-}
-
-function formatDate(input) {
-  const d = new Date(input);
-  if (isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("es-CO");
-}
-
-// Acepta claves: lun, mar, mie, jue, vie, sab, dom (o variantes)
-function diaToLabel(k) {
-  const map = {
-    lun: "Lun",
-    mar: "Mar",
-    mie: "Mié",
-    jue: "Jue",
-    vie: "Vie",
-    sab: "Sáb",
-    dom: "Dom",
-    l: "Lun", m: "Mar", x: "Mié", j: "Jue", v: "Vie", s: "Sáb", d: "Dom",
-  };
-  return map[k?.toLowerCase?.()] || k || "";
 }

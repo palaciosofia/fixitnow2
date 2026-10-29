@@ -71,11 +71,23 @@ El rol de admin se da con un *custom claim* (`admin: true`) desde un entorno de 
 
 ```
 src/
-├── Components/     componentes reutilizables (Navbar, Footer, modales, tarjetas…)
+├── ui/             kit de interfaz propio: Button, Input, Field, Card, Badge, Modal,
+│                   Avatar, Rating, Tabs, EmptyState… (todo el diseño sale de aquí)
+├── layout/         marco de la app: header público, footer y panel con menú lateral
+│                   (escritorio) y barra inferior (celular), según el rol
+├── Components/     piezas con lógica: BookingPanel, Messaging, modales de pago y reseña…
 ├── Pages/          una carpeta por página
+├── MainLayout/     tabla de rutas
 ├── context/        AuthProvider (usuario, perfil y rol)
 ├── routing/        rutas protegidas por rol
 ├── services/       acceso a Firebase (auth, técnicos, pagos, mensajes, reseñas)
 ├── hooks/
-└── utils/          formato de moneda, franjas horarias, estados de pago…
+└── utils/          moneda, catálogo, franjas horarias, estados de pago…
 ```
+
+### Diseño
+
+Los colores, radios y la fuente (Geist) están definidos como tokens en `src/index.css`
+(bloque `@theme`): `brand` (morado #5B4CF0), `ink`, `muted`, `line`, `canvas` y los
+estados `ok`, `warn`, `bad`, `info`. Para cambiar el color principal basta con editar
+`--color-brand*` ahí; los componentes no usan colores sueltos.

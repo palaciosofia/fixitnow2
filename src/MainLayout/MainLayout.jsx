@@ -1,9 +1,9 @@
 // src/MainLayout/MainLayout.jsx
 import { BrowserRouter, Route, Routes, Navigate, useLocation } from "react-router-dom";
 import { lazy, Suspense, useEffect } from "react";
-import Navbar from "../Components/Navbar/Navbar";
-import Footer from "../Components/Footer/Footer";
 import Home from "../Pages/Home/Home";
+import { PublicLayout, SmartLayout } from "../layout/Layouts";
+import { Loader } from "../ui";
 import AuthCheck from "../AuthCheck/AuthCheck";
 
 // Protecciones por rol
@@ -17,7 +17,6 @@ const Login = lazy(() => import("../Pages/Auth/Login/Login"));
 const Register = lazy(() => import("../Pages/Auth/Register/Register"));
 const Forgot = lazy(() => import("../Pages/Auth/Forgot/Forgot"));
 const NotFound = lazy(() => import("../Pages/Error/Error"));
-const ServiceDetail = lazy(() => import("../Pages/ServiceDetail/ServiceDetail"));
 const Book = lazy(() => import("../Pages/Book/Book"));
 const TecnicoDashboard = lazy(() => import("../Pages/Tecnico/Dashboard"));
 const AdminPanel = lazy(() => import("../Pages/Admin/AdminPanel"));
@@ -34,19 +33,19 @@ const Chat = lazy(() => import("../Pages/Chat/Chat"));
 const Info = lazy(() => import("../Pages/Info/Info"));
 
 function PageLoader() {
-  return (
-    <div className="min-h-[60vh] flex items-center justify-center" role="status" aria-live="polite">
-      <div className="h-10 w-10 animate-spin rounded-full border-4 border-emerald-200 border-t-emerald-600" />
-      <span className="sr-only">Cargando…</span>
-    </div>
-  );
+  return <Loader />;
 }
 
-// Al cambiar de página, vuelve arriba (salvo enlaces con #ancla)
+// Al cambiar de página vuelve arriba; con #ancla, baja hasta esa sección
 function ScrollToTop() {
   const { pathname, hash } = useLocation();
   useEffect(() => {
-    if (!hash) window.scrollTo(0, 0);
+    if (!hash) {
+      window.scrollTo(0, 0);
+      return;
+    }
+    const t = setTimeout(() => document.getElementById(hash.slice(1))?.scrollIntoView(), 50);
+    return () => clearTimeout(t);
   }, [pathname, hash]);
   return null;
 }
@@ -55,142 +54,59 @@ const MainLayout = () => {
   return (
     <BrowserRouter>
       <ScrollToTop />
-      <Navbar />
-
       <Suspense fallback={<PageLoader />}>
-      <Routes>
-        {/* Home */}
-        <Route
-          path="/"
-          element={
-            <AuthCheck>
-              <Home />
-            </AuthCheck>
-          }
-        />
+        <Routes>
+          {/* Autenticación: pantallas propias, sin encabezado */}
+          <Route path="auth" element={<Auth />}>
+            <Route path="login" element={<Login />} />
+            <Route path="register" element={<Register />} />
+            <Route path="forgot" element={<Forgot />} />
+          </Route>
 
-        {/* Auth */}
-        <Route path="auth" element={<Auth />}>
-          <Route path="login" element={<Login />} />
-          <Route path="register" element={<Register />} />
-          <Route path="forgot" element={<Forgot />} />
-        </Route>
+          {/* Páginas públicas con encabezado y pie */}
+          <Route element={<PublicLayout />}>
+            <Route
+              index
+              element={
+                <AuthCheck>
+                  <Home />
+                </AuthCheck>
+              }
+            />
+            {["about", "contacto", "carreras", "terminos", "privacidad", "cookies"].map((p) => (
+              <Route key={p} path={p} element={<Info page={p} />} />
+            ))}
+            <Route path="no-autorizado" element={<NoAutorizado />} />
+            <Route path="*" element={<NotFound />} />
+          </Route>
 
-        {/* Público */}
-        <Route path="servicio/:id" element={<ServiceDetail />} />
+          {/* App: con sesión se ve con menú lateral; sin sesión, con el marco público */}
+          <Route element={<SmartLayout />}>
+            <Route path="tecnicos" element={<Catalog />} />
+            <Route path="tecnicos/:slug" element={<Profile />} />
+            <Route path="senias" element={<Senias />} />
 
-        {/* Catálogo público */}
-        <Route path="tecnicos" element={<Catalog />} />
-        {/* Perfil público por slug */}
-        <Route path="tecnicos/:slug" element={<Profile />} />
-        {/* Señas - Servicios de lenguaje de señas */}
-        <Route path="senias" element={<Senias />} />
+            <Route path="agendar/:tid" element={<ProtectedRoute allowedRoles={["cliente", "tecnico", "admin"]}><Book /></ProtectedRoute>} />
+            <Route path="perfil" element={<ProtectedRoute allowedRoles={["cliente", "tecnico", "admin"]}><Perfil /></ProtectedRoute>} />
+            <Route path="mis-reservas" element={<ProtectedRoute allowedRoles={["cliente", "tecnico", "admin"]}><MisReservas /></ProtectedRoute>} />
+            <Route path="pagos" element={<ProtectedRoute allowedRoles={["cliente", "tecnico", "admin"]}><Pagos /></ProtectedRoute>} />
+            <Route path="mensajes" element={<ProtectedRoute allowedRoles={["cliente", "tecnico", "admin"]}><Mensajes /></ProtectedRoute>} />
+            <Route path="chat/:otherUserId/:otherUserName" element={<ProtectedRoute allowedRoles={["cliente", "tecnico", "admin"]}><Chat /></ProtectedRoute>} />
 
-        {/* Compatibilidad: /catalogo → /tecnicos */}
-        <Route path="catalogo" element={<Navigate to="/tecnicos" replace />} />
+            {/* Técnico */}
+            <Route path="mi-perfil" element={<ProtectedRoute allowedRoles={["tecnico", "admin"]}><TecnicoDashboard /></ProtectedRoute>} />
+            <Route path="agenda" element={<ProtectedRoute allowedRoles={["tecnico", "admin"]}><Agenda /></ProtectedRoute>} />
 
-        {/* Cliente/Técnico/Admin */}
-        <Route
-          path="agendar/:tid"
-          element={
-            <ProtectedRoute allowedRoles={["cliente", "tecnico", "admin"]}>
-              <Book />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="perfil"
-          element={
-            <ProtectedRoute allowedRoles={["cliente", "tecnico", "admin"]}>
-              <Perfil />
-            </ProtectedRoute>
-          }
-        />
+            {/* Admin (protección por claim admin) */}
+            <Route path="admin" element={<AdminRoute><AdminPanel /></AdminRoute>} />
+          </Route>
 
-        {/* Cliente → Mis reservas */}
-        <Route
-          path="mis-reservas"
-          element={
-            <ProtectedRoute allowedRoles={["cliente", "tecnico", "admin"]}>
-              <MisReservas />
-            </ProtectedRoute>
-          }
-        />
-
-        {/* Cliente → Pagos */}
-        <Route
-          path="pagos"
-          element={
-            <ProtectedRoute allowedRoles={["cliente", "tecnico", "admin"]}>
-              <Pagos />
-            </ProtectedRoute>
-          }
-        />
-
-        {/* Técnico */}
-        <Route
-          path="mi-perfil"
-          element={
-            <ProtectedRoute allowedRoles={["tecnico", "admin"]}>
-              <TecnicoDashboard />
-            </ProtectedRoute>
-          }
-        />
-        {/* Técnico → Agenda */}
-        <Route
-          path="agenda"
-          element={
-            <ProtectedRoute allowedRoles={["tecnico", "admin"]}>
-              <Agenda />
-            </ProtectedRoute>
-          }
-        />
-
-        {/* Alias legacy → redirige a /mi-perfil */}
-        <Route path="tecnico" element={<Navigate to="/mi-perfil" replace />} />
-
-        {/* Admin (protección por claim admin) */}
-        <Route
-          path="admin"
-          element={
-            <AdminRoute>
-              <AdminPanel />
-            </AdminRoute>
-          }
-        />
-
-        {/* Bloqueo por rol */}
-        <Route path="no-autorizado" element={<NoAutorizado />} />
-
-        {/* Mensajes */}
-        <Route
-          path="mensajes"
-          element={
-            <ProtectedRoute allowedRoles={["cliente", "tecnico", "admin"]}>
-              <Mensajes />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="chat/:otherUserId/:otherUserName"
-          element={
-            <ProtectedRoute allowedRoles={["cliente", "tecnico", "admin"]}>
-              <Chat />
-            </ProtectedRoute>
-          }
-        />
-
-        {/* Páginas informativas (footer) */}
-        {["about", "contacto", "carreras", "terminos", "privacidad", "cookies"].map((p) => (
-          <Route key={p} path={p} element={<Info page={p} />} />
-        ))}
-
-        {/* 404 */}
-        <Route path="*" element={<NotFound />} />
-      </Routes>
+          {/* Compatibilidad con rutas antiguas */}
+          <Route path="catalogo" element={<Navigate to="/tecnicos" replace />} />
+          <Route path="tecnico" element={<Navigate to="/mi-perfil" replace />} />
+          <Route path="servicio/:id" element={<Navigate to="/tecnicos" replace />} />
+        </Routes>
       </Suspense>
-
-      <Footer />
     </BrowserRouter>
   );
 };

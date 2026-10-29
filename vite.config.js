@@ -17,7 +17,6 @@ export default defineConfig({
           if (!id.includes('node_modules')) return
           if (id.includes('@firebase/storage') || id.includes('firebase/storage')) return 'firebase-storage'
           if (id.includes('firebase')) return 'firebase'
-          if (id.includes('framer-motion') || id.includes('motion-dom') || id.includes('motion-utils')) return 'motion'
           if (/[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler)[\\/]/.test(id)) return 'react'
         },
       },

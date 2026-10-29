@@ -3,12 +3,13 @@
 // datos la imponen las reglas de Firestore (firestore.rules).
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthProvider";
+import { Loader } from "../ui";
 
 export default function ProtectedRoute({ allowedRoles = [], children }) {
   const { user, loading, role, isAdmin } = useAuth();
   const loc = useLocation();
 
-  if (loading) return <div className="p-6">Cargando…</div>;
+  if (loading) return <Loader />;
 
   // No logueado → login, recordando a dónde quería ir
   if (!user) return <Navigate to="/auth/login" replace state={{ from: loc }} />;

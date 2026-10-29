@@ -4,7 +4,9 @@ import { useNavigate, useLocation, Link } from "react-router-dom";
 import { loginUser, loginWithGoogle } from "../../../services/auth"; 
 import { auth } from "../../../firebase";
 import { getIdTokenResult } from "firebase/auth";
-import { Mail, Lock, Eye, EyeOff, LogIn } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
+import { Alert, Button, Field, Input, Logo } from "../../../ui";
+import { Divider, GoogleButton } from "../AuthParts";
 
 export default function Login() {
   const nav = useNavigate();
@@ -20,10 +22,11 @@ export default function Login() {
 
   const friendlyError = (e) => {
     const message = e?.message || "";
-    if (message.includes("auth/invalid-credential")) return "Credenciales inválidas.";
+    if (message.includes("auth/invalid-credential")) return "Correo o contraseña incorrectos.";
     if (message.includes("auth/user-not-found")) return "Usuario no encontrado.";
     if (message.includes("auth/user-disabled")) return "Tu cuenta está deshabilitada.";
     if (message.includes("auth/too-many-requests")) return "Demasiados intentos. Intenta luego.";
+    if (message.includes("auth/popup-closed-by-user")) return "Cerraste la ventana de Google antes de terminar.";
     return message || "No se pudo iniciar sesión.";
   };
 
@@ -97,131 +100,57 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-lg p-6">
-        <div className="text-center mb-4">
-          <div className="mx-auto w-16 h-16 grid place-items-center rounded-full bg-gradient-to-br from-teal-600 to-emerald-400 text-white mb-3">
-            <LogIn className="w-7 h-7" />
-          </div>
-          <h1 className="text-2xl font-semibold">Bienvenido</h1>
-          <p className="text-sm text-gray-600 mt-1">
-            Accede a tu cuenta para gestionar reservas y perfil.
-          </p>
-        </div>
+    <div className="flex min-h-screen items-center justify-center bg-canvas px-4 py-10">
+      <main className="w-full max-w-[420px] rounded-[20px] border border-line bg-white p-6 sm:p-8">
+        <Logo compact />
+        <h1 className="mt-5 text-[26px] font-semibold">Bienvenido de nuevo</h1>
+        <p className="mt-1.5 text-sm text-muted">Entra para ver tus reservas y mensajes.</p>
 
-        {err && (
-          <div className="flex items-start gap-2 bg-red-50 text-red-700 border border-red-200 rounded px-3 py-2 mb-4">
-            <span className="text-sm">{err}</span>
-          </div>
-        )}
-
-        <form onSubmit={onSubmit} className="space-y-4" noValidate>
-          <div>
-            <label htmlFor="email" className="block text-sm mb-1">
-              Correo
-            </label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
-                <Mail className="w-4 h-4" />
-              </span>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                autoComplete="email"
-                placeholder="correo@dominio.com"
-                value={form.email}
-                onChange={onChange}
-                required
-                className="w-full border rounded px-3 py-2 pl-10 outline-none focus:ring-2 focus:ring-emerald-200"
-              />
+        <form onSubmit={onSubmit} noValidate className="mt-6 flex flex-col gap-3.5">
+          <Field label="Correo electrónico">
+            {(id) => (
+              <Input id={id} name="email" type="email" autoComplete="email" value={form.email} onChange={onChange} placeholder="tucorreo@ejemplo.com" required />
+            )}
+          </Field>
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between">
+              <label htmlFor="login-pwd" className="text-[13px] font-medium">Contraseña</label>
+              <Link to="/auth/forgot" className="text-[13px] text-brand-ink hover:underline">¿La olvidaste?</Link>
             </div>
-          </div>
-
-          <div>
-            <label htmlFor="password" className="block text-sm mb-1">
-              Contraseña
-            </label>
             <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
-                <Lock className="w-4 h-4" />
-              </span>
-              <input
-                id="password"
+              <Input
+                id="login-pwd"
                 name="password"
                 type={showPwd ? "text" : "password"}
                 autoComplete="current-password"
-                placeholder="Tu contraseña"
                 value={form.password}
                 onChange={onChange}
+                className="pr-11"
                 required
-                className="w-full border rounded px-3 py-2 pl-10 pr-10 outline-none focus:ring-2 focus:ring-emerald-200"
               />
               <button
                 type="button"
-                onClick={() => setShowPwd((s) => !s)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600"
+                onClick={() => setShowPwd((v) => !v)}
                 aria-label={showPwd ? "Ocultar contraseña" : "Mostrar contraseña"}
+                className="absolute right-1 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-subtle hover:text-ink"
               >
-                {showPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                {showPwd ? <EyeOff className="h-4 w-4" aria-hidden="true" /> : <Eye className="h-4 w-4" aria-hidden="true" />}
               </button>
             </div>
           </div>
 
-          <div className="flex items-center justify-between">
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" className="form-checkbox" /> <span>Recordarme</span>
-            </label>
-            <Link to="/auth/forgot" className="text-sm text-gray-600 hover:underline">
-              Olvidé mi contraseña
-            </Link>
-          </div>
+          {err && <Alert tone="danger">{err}</Alert>}
 
-          <div className="flex flex-col gap-3">
-            {/* Botón normal correo/contraseña */}
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-teal-600 to-emerald-400 text-white font-medium shadow"
-            >
-              {loading ? (
-                <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-white" />
-              ) : (
-                <LogIn className="w-4 h-4" />
-              )}
-              <span>{loading ? "Ingresando..." : "Entrar"}</span>
-            </button>
-
-            {/* Separador */}
-            <div className="flex items-center gap-2 my-1">
-              <span className="h-px flex-1 bg-gray-200" />
-              <span className="text-xs text-gray-500">o continúa con</span>
-              <span className="h-px flex-1 bg-gray-200" />
-            </div>
-
-            {/* Botón Google */}
-            <button
-              type="button"
-              disabled={loading}
-              onClick={onGoogleLogin}
-              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-gray-300 bg-white text-sm font-medium hover:bg-gray-50"
-            >
-              {/* puedes poner un simple círculo con G si no quieres iconos extra */}
-              <span className="w-5 h-5 grid place-items-center rounded-full bg-white border border-gray-300 text-xs">
-                G
-              </span>
-              <span>Continuar con Google</span>
-            </button>
-
-            <div className="text-center text-sm text-gray-600">
-              ¿No tienes cuenta?{" "}
-              <Link to="/auth/register" className="text-teal-600 hover:underline">
-                Regístrate
-              </Link>
-            </div>
-          </div>
+          <Button type="submit" size="lg" loading={loading}>Iniciar sesión</Button>
+          <Divider />
+          <GoogleButton onClick={onGoogleLogin} disabled={loading} />
         </form>
-      </div>
+
+        <p className="mt-6 text-center text-sm text-muted">
+          ¿No tienes cuenta?{" "}
+          <Link to="/auth/register" className="font-medium text-brand-ink hover:underline">Crear una</Link>
+        </p>
+      </main>
     </div>
   );
 }

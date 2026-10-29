@@ -1,684 +1,351 @@
 // src/Pages/Admin/AdminPanel.jsx
-import { useEffect, useState } from "react";
-import {
-  collection,
-  getDocs,
-  updateDoc,
-  doc,
-  serverTimestamp,
-  writeBatch,
-} from "firebase/firestore";
+// Administración: técnicos (publicar / ocultar / bloquear) y usuarios (bloquear).
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { collection, getDocs, query, updateDoc, where, doc, serverTimestamp, writeBatch } from "firebase/firestore";
+import { Search, Users, Wrench, Wallet, ShieldBan } from "lucide-react";
 import { db } from "../../firebase";
 import { useAuth } from "../../context/AuthProvider";
-import {
-  Search,
-  Trash2,
-  CheckCircle,
-  AlertCircle,
-  Shield,
-  Users,
-  BarChart3,
-  Filter,
-} from "lucide-react";
+import { Alert, Avatar, Badge, Button, Card, Loader, PageHeader, Rating, Segmented, Select } from "../../ui";
+import { techPath } from "../../utils/catalog";
+import { cx } from "../../ui/cx";
 
-// helper: iniciales para avatar cuando no hay foto
-function getInitials(name = "") {
-  const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "??";
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
+const ESTADO = {
+  publicado: { label: "Publicado", tone: "success" },
+  revision: { label: "Sin publicar", tone: "neutral" },
+  bloqueado: { label: "Bloqueado", tone: "danger" },
+};
+const ROLE_LABEL = { cliente: "Cliente", tecnico: "Técnico", admin: "Admin" };
+
+const byCreatedDesc = (a, b) => (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0);
 
 export default function AdminPanel() {
   const { isAdmin } = useAuth();
   const [tab, setTab] = useState("tecnicos");
+  const [tecnicos, setTecnicos] = useState([]);
+  const [usuarios, setUsuarios] = useState([]);
+  const [pagosRevision, setPagosRevision] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  const loadTecnicos = useCallback(async () => {
+    const snap = await getDocs(collection(db, "technicians"));
+    // "estado" se deriva de los campos que usa la app (publicado / blocked)
+    setTecnicos(
+      snap.docs
+        .map((d) => {
+          const data = d.data();
+          return { ...data, id: d.id, estado: data.blocked ? "bloqueado" : data.publicado ? "publicado" : "revision" };
+        })
+        .sort(byCreatedDesc)
+    );
+  }, []);
+
+  const loadUsuarios = useCallback(async () => {
+    const snap = await getDocs(collection(db, "users"));
+    setUsuarios(
+      snap.docs
+        .map((d) => {
+          const raw = d.data();
+          return {
+            id: d.id,
+            nombre: raw.nombre ?? raw.name ?? "",
+            email: raw.email ?? "",
+            telefono: raw.telefono ?? "",
+            role: raw.role ?? "cliente",
+            bloqueado: raw.blocked === true || raw.bloqueado === true,
+            createdAt: raw.createdAt ?? null,
+          };
+        })
+        .sort(byCreatedDesc)
+    );
+  }, []);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    (async () => {
+      try {
+        await Promise.all([loadTecnicos(), loadUsuarios()]);
+        const pagos = await getDocs(query(collection(db, "payments"), where("status", "==", "reported")));
+        setPagosRevision(pagos.size);
+      } catch (e) {
+        console.error(e);
+        setError("No pudimos cargar todos los datos. Revisa tus permisos de administrador.");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [isAdmin, loadTecnicos, loadUsuarios]);
 
   if (!isAdmin) return null;
+  if (loading) return <Loader label="Cargando panel…" />;
+
+  const publicados = tecnicos.filter((t) => t.estado === "publicado").length;
+  const bloqueados = usuarios.filter((u) => u.bloqueado).length;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-emerald-50">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 text-white py-12 px-4 shadow-lg">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center">
-              <Shield className="w-6 h-6" />
-            </div>
-            <div>
-              <h1
-                className="text-4xl font-black"
-                style={{ fontFamily: "Space Grotesk, sans-serif" }}
-              >
-                Panel de administración
-              </h1>
-              <p className="text-white/80">
-                Gestiona técnicos y usuarios de la plataforma
-              </p>
-            </div>
-          </div>
-        </div>
+    <div>
+      <PageHeader title="Administración" subtitle="Gestiona técnicos y usuarios de la plataforma" />
+
+      {error && <Alert tone="danger" className="mb-4">{error}</Alert>}
+      {notice && <Alert tone="success" className="mb-4" onClose={() => setNotice("")}>{notice}</Alert>}
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Kpi icon={Wrench} label="Técnicos publicados" value={publicados} sub={`de ${tecnicos.length} registrados`} />
+        <Kpi icon={Users} label="Usuarios" value={usuarios.length} sub={`${usuarios.filter((u) => u.role === "cliente").length} clientes`} />
+        <Kpi icon={Wallet} label="Pagos en revisión" value={pagosRevision ?? "—"} sub="esperando al técnico" warn={pagosRevision > 0} />
+        <Kpi icon={ShieldBan} label="Cuentas bloqueadas" value={bloqueados} sub="no pueden iniciar sesión" />
       </div>
 
-      {/* Tabs */}
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <div className="flex gap-4 mb-8 border-b-2 border-gray-200">
-          <button
-            onClick={() => setTab("tecnicos")}
-            className={`flex items-center gap-2 px-6 py-3 font-bold text-lg transition-all relative ${
-              tab === "tecnicos"
-                ? "text-emerald-700"
-                : "text-gray-600 hover:text-gray-900"
-            }`}
-          >
-            <BarChart3 className="w-6 h-6" />
-            Técnicos
-            {tab === "tecnicos" && (
-              <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-t-full"></div>
-            )}
-          </button>
-          <button
-            onClick={() => setTab("usuarios")}
-            className={`flex items-center gap-2 px-6 py-3 font-bold text-lg transition-all relative ${
-              tab === "usuarios"
-                ? "text-emerald-700"
-                : "text-gray-600 hover:text-gray-900"
-            }`}
-          >
-            <Users className="w-6 h-6" />
-            Usuarios
-            {tab === "usuarios" && (
-              <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-t-full"></div>
-            )}
-          </button>
-        </div>
+      <Segmented
+        className="mt-6"
+        label="Sección"
+        value={tab}
+        onChange={setTab}
+        items={[
+          { value: "tecnicos", label: `Técnicos · ${tecnicos.length}` },
+          { value: "usuarios", label: `Usuarios · ${usuarios.length}` },
+        ]}
+      />
 
-        {/* Content */}
-        {tab === "tecnicos" ? <TecnicosTable /> : <UsuariosTable />}
+      <div className="mt-4">
+        {tab === "tecnicos" ? (
+          <TecnicosTable data={tecnicos} reload={loadTecnicos} onNotice={setNotice} onError={setError} />
+        ) : (
+          <UsuariosTable data={usuarios} reload={loadUsuarios} onNotice={setNotice} onError={setError} />
+        )}
       </div>
     </div>
   );
 }
 
-/* =========================================================
- * TÉCNICOS
- * =======================================================*/
-function TecnicosTable() {
-  const [tecnicos, setTecnicos] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [filters, setFilters] = useState({
-    ciudad: "",
-    estado: "",
-    qText: "",
-  });
+function Kpi({ icon: Icon, label, value, sub, warn }) {
+  return (
+    <Card className="p-4">
+      <div className="flex items-center justify-between">
+        <p className="text-[13px] text-muted">{label}</p>
+        <Icon className="h-4 w-4 text-subtle" aria-hidden="true" />
+      </div>
+      <p className={cx("mt-2 text-[26px] font-semibold", warn && "text-warn")}>{value}</p>
+      <p className="mt-1 text-xs text-subtle">{sub}</p>
+    </Card>
+  );
+}
 
-  useEffect(() => {
-    loadTecnicos();
-  }, []);
+function SearchBox({ value, onChange, placeholder }) {
+  return (
+    <label className="flex h-10 min-w-[220px] flex-[1_1_260px] items-center gap-2 rounded-[10px] border border-line bg-white px-3 text-subtle focus-within:border-brand">
+      <Search className="h-4 w-4" aria-hidden="true" />
+      <span className="sr-only">{placeholder}</span>
+      <input type="search" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="min-w-0 flex-1 bg-transparent text-[13px] text-ink outline-none placeholder:text-subtle" />
+    </label>
+  );
+}
 
-  async function loadTecnicos() {
-    setLoading(true);
+/* ---------------- Técnicos ---------------- */
+function TecnicosTable({ data, reload, onNotice, onError }) {
+  const [q, setQ] = useState("");
+  const [estado, setEstado] = useState("");
+  const [busyId, setBusyId] = useState(null);
+
+  const rows = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    return data.filter((t) => {
+      if (estado && t.estado !== estado) return false;
+      if (!term) return true;
+      return [t.nombre, t.ciudad, ...(t.especialidades || [])].filter(Boolean).some((x) => String(x).toLowerCase().includes(term));
+    });
+  }, [data, q, estado]);
+
+  async function run(t, fn, okText) {
+    setBusyId(t.id);
     try {
-      // 🔹 Trae TODOS los docs de 'technicians' sin orderBy
-      const snapshot = await getDocs(collection(db, "technicians"));
-      // "estado" se deriva de los campos que usa la app (publicado / blocked)
-      let items = snapshot.docs.map((d) => {
-        const data = d.data();
-        const estado = data.blocked ? "bloqueado" : data.publicado ? "publicado" : "revision";
-        return { ...data, id: d.id, estado };
-      });
-
-      // 🔹 Orden opcional en memoria por createdAt (si existe)
-      items.sort((a, b) => {
-        const ta = a.createdAt?.toMillis?.() ? a.createdAt.toMillis() : 0;
-        const tb = b.createdAt?.toMillis?.() ? b.createdAt.toMillis() : 0;
-        return tb - ta; // más recientes primero
-      });
-
-      setTecnicos(items);
-    } catch (error) {
-      console.error("Error loading técnicos:", error);
-      setTecnicos([]);
+      await fn();
+      await reload();
+      onNotice(okText);
+    } catch (e) {
+      console.error(e);
+      onError("No se pudo actualizar el técnico.");
+    } finally {
+      setBusyId(null);
     }
-    setLoading(false);
-  }
-
-  function aplicarFiltros(allTecnicos) {
-    let filtered = allTecnicos;
-
-    if (filters.estado) {
-      filtered = filtered.filter((t) => t.estado === filters.estado);
-    }
-    if (filters.ciudad) {
-      const city = filters.ciudad.toLowerCase();
-      filtered = filtered.filter((t) =>
-        (t.ciudad || "").toLowerCase().includes(city)
-      );
-    }
-    if (filters.qText) {
-      const q_text = filters.qText.toLowerCase();
-      filtered = filtered.filter(
-        (t) =>
-          t.nombre?.toLowerCase().includes(q_text) ||
-          t.email?.toLowerCase().includes(q_text)
-      );
-    }
-
-    return filtered;
   }
 
   // Publicar / ocultar del catálogo (campo `publicado`, el que lee el catálogo)
-  async function handlePublish(tecnico) {
-    try {
-      await updateDoc(doc(db, "technicians", tecnico.id), {
-        publicado: tecnico.estado !== "publicado",
-        updatedAt: serverTimestamp(),
-      });
-      loadTecnicos();
-    } catch (error) {
-      console.error("Error updating técnico:", error);
-    }
-  }
+  const togglePublish = (t) =>
+    run(
+      t,
+      () => updateDoc(doc(db, "technicians", t.id), { publicado: t.estado !== "publicado", updatedAt: serverTimestamp() }),
+      t.estado === "publicado" ? `Ocultamos a ${t.nombre}.` : `Publicamos a ${t.nombre}.`
+    );
 
-  // Bloquear: oculta del catálogo y bloquea la cuenta del usuario dueño del perfil
-  async function handleBlock(tecnico) {
-    const bloquear = tecnico.estado !== "bloqueado";
+  // Bloquear: oculta del catálogo y bloquea la cuenta del dueño del perfil
+  const toggleBlock = (t) => {
+    const bloquear = t.estado !== "bloqueado";
     const pregunta = bloquear
-      ? "¿Bloquear este técnico? Se ocultará del catálogo y no podrá iniciar sesión."
-      : "¿Desbloquear este técnico? Podrá iniciar sesión y volver a publicar su perfil.";
+      ? `¿Bloquear a ${t.nombre}? Se ocultará del catálogo y no podrá iniciar sesión.`
+      : `¿Desbloquear a ${t.nombre}? Podrá iniciar sesión y volver a publicar su perfil.`;
     if (!window.confirm(pregunta)) return;
-    try {
-      const batch = writeBatch(db);
-      batch.update(doc(db, "technicians", tecnico.id), {
-        blocked: bloquear,
-        ...(bloquear ? { publicado: false } : {}),
-        updatedAt: serverTimestamp(),
-      });
-      const ownerUid = tecnico.uid || tecnico.id;
-      batch.set(
-        doc(db, "users", ownerUid),
-        { blocked: bloquear, updatedAt: serverTimestamp() },
-        { merge: true }
-      );
-      await batch.commit();
-      loadTecnicos();
-    } catch (error) {
-      console.error("Error bloqueando técnico:", error);
-    }
-  }
-
-  const tecnicosFiltered = aplicarFiltros(tecnicos);
+    run(
+      t,
+      async () => {
+        const batch = writeBatch(db);
+        batch.update(doc(db, "technicians", t.id), { blocked: bloquear, ...(bloquear ? { publicado: false } : {}), updatedAt: serverTimestamp() });
+        batch.set(doc(db, "users", t.uid || t.id), { blocked: bloquear, updatedAt: serverTimestamp() }, { merge: true });
+        await batch.commit();
+      },
+      bloquear ? `Bloqueamos a ${t.nombre}.` : `Desbloqueamos a ${t.nombre}.`
+    );
+  };
 
   return (
-    <div className="space-y-6">
-      {/* Filtros */}
-      <div className="bg-white rounded-3xl border border-gray-200 shadow-sm p-6">
-        <h3
-          className="text-lg font-bold mb-4 flex items-center gap-2"
-          style={{ fontFamily: "Space Grotesk, sans-serif" }}
-        >
-          <Filter className="w-5 h-5 text-emerald-600" />
-          Filtros
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div>
-            <label
-              className="block text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide"
-              style={{ fontFamily: "DM Sans, sans-serif" }}
-            >
-              Buscar
-            </label>
-            <input
-              type="text"
-              placeholder="Nombre o email..."
-              value={filters.qText}
-              onChange={(e) => {
-                setFilters({ ...filters, qText: e.target.value });
-              }}
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
-            />
-          </div>
-          <div>
-            <label
-              className="block text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide"
-              style={{ fontFamily: "DM Sans, sans-serif" }}
-            >
-              Ciudad
-            </label>
-            <input
-              type="text"
-              placeholder="Ej: Barranquilla"
-              value={filters.ciudad}
-              onChange={(e) => {
-                setFilters({ ...filters, ciudad: e.target.value });
-              }}
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
-            />
-          </div>
-          <div>
-            <label
-              className="block text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide"
-              style={{ fontFamily: "DM Sans, sans-serif" }}
-            >
-              Estado
-            </label>
-            <select
-              value={filters.estado}
-              onChange={(e) => {
-                setFilters({ ...filters, estado: e.target.value });
-              }}
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
-            >
-              <option value="">Todos</option>
-              <option value="publicado">Publicado</option>
-              <option value="revision">Sin publicar</option>
-              <option value="bloqueado">Bloqueado</option>
-            </select>
-          </div>
-          <div className="flex items	end">
-            <button
-              onClick={() => {
-                setFilters({ ciudad: "", estado: "", qText: "" });
-              }}
-              className="w-full px-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-xl font-semibold transition"
-            >
-              Limpiar
-            </button>
-          </div>
-        </div>
+    <>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <SearchBox value={q} onChange={setQ} placeholder="Nombre, ciudad o especialidad" />
+        <label className="flex items-center gap-2 text-[13px] text-muted">
+          Estado
+          <Select value={estado} onChange={(e) => setEstado(e.target.value)} className="h-10 w-auto">
+            <option value="">Todos</option>
+            <option value="publicado">Publicado</option>
+            <option value="revision">Sin publicar</option>
+            <option value="bloqueado">Bloqueado</option>
+          </Select>
+        </label>
       </div>
-
-      {/* Tabla de Técnicos */}
-      <div className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
-        {loading ? (
-          <div className="p-12 text-center">
-            <div className="inline-block animate-spin">
-              <div className="w-8 h-8 border-4 border-gray-300 border-t-emerald-600 rounded-full"></div>
-            </div>
-            <p className="mt-4 text-gray-600">Cargando técnicos...</p>
-          </div>
-        ) : tecnicosFiltered.length === 0 ? (
-          <div className="p-12 text-center">
-            <BarChart3 className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600 font-semibold">
-              No hay técnicos para mostrar
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="bg-gradient-to-r from-emerald-50 to-teal-50 border-b-2 border-gray-200">
-                  <th
-                    className="px-6 py-4 text-left font-bold text-gray-700"
-                    style={{ fontFamily: "Space Grotesk, sans-serif" }}
-                  >
-                    Técnico
-                  </th>
-                  <th
-                    className="px-6 py-4 text-left font-bold text-gray-700"
-                    style={{ fontFamily: "Space Grotesk, sans-serif" }}
-                  >
-                    Ciudad
-                  </th>
-                  <th
-                    className="px-6 py-4 text-left font-bold text-gray-700"
-                    style={{ fontFamily: "Space Grotesk, sans-serif" }}
-                  >
-                    Estado
-                  </th>
-                  <th
-                    className="px-6 py-4 text-left font-bold text-gray-700"
-                    style={{ fontFamily: "Space Grotesk, sans-serif" }}
-                  >
-                    Especialidades
-                  </th>
-                  <th
-                    className="px-6 py-4 text-center font-bold text-gray-700"
-                    style={{ fontFamily: "Space Grotesk, sans-serif" }}
-                  >
-                    Acciones
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {tecnicosFiltered.map((tecnico) => (
-                  <tr key={tecnico.id} className="hover:bg-gray-50 transition">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-gradient-to-br from-emerald-400 to-teal-500 rounded-full flex items-center justify-center text-white font-bold text-sm">
-                          {getInitials(tecnico.nombre)}
-                        </div>
-                        <div>
-                          <p className="font-semibold text-gray-900">
-                            {tecnico.nombre}
-                          </p>
-                          <p className="text-sm text-gray-500">
-                            {tecnico.email}
-                          </p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-gray-700 font-medium">
-                      {tecnico.ciudad}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span
-                        className={`px-3 py-1 rounded-full text-sm font-bold ${
-                          tecnico.estado === "publicado"
-                            ? "bg-green-100 text-green-700"
-                            : tecnico.estado === "revision"
-                            ? "bg-yellow-100 text-yellow-700"
-                            : "bg-red-100 text-red-700"
-                        }`}
-                      >
-                        {tecnico.estado === "revision" ? "sin publicar" : tecnico.estado}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex flex-wrap gap-2">
-                        {tecnico.especialidades?.slice(0, 2).map((esp, i) => (
-                          <span
-                            key={i}
-                            className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-xs font-semibold"
-                          >
-                            {esp}
-                          </span>
-                        ))}
-                        {tecnico.especialidades?.length > 2 && (
-                          <span className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-xs font-semibold">
-                            +{tecnico.especialidades.length - 2}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex justify-center gap-2">
-                        <button
-                          onClick={() => handlePublish(tecnico)}
-                          disabled={tecnico.estado === "bloqueado"}
-                          className={`px-4 py-2 rounded-lg font-semibold flex items-center gap-2 text-sm transition disabled:opacity-50 disabled:cursor-not-allowed ${
-                            tecnico.estado === "publicado"
-                              ? "bg-yellow-100 text-yellow-700 hover:bg-yellow-200"
-                              : "bg-green-100 text-green-700 hover:bg-green-200"
-                          }`}
-                        >
-                          <CheckCircle className="w-4 h-4" />
-                          {tecnico.estado === "publicado"
-                            ? "Ocultar"
-                            : "Publicar"}
-                        </button>
-                        <button
-                          onClick={() => handleBlock(tecnico)}
-                          className="px-4 py-2 rounded-lg font-semibold flex items-center gap-2 text-sm bg-red-100 text-red-700 hover:bg-red-200 transition"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                          {tecnico.estado === "bloqueado" ? "Desbloquear" : "Bloquear"}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {/* Contador de resultados */}
-        {!loading && tecnicosFiltered.length > 0 && (
-          <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 text-center">
-            <p className="text-sm text-gray-600 font-semibold">
-              Total:{" "}
-              <span className="text-emerald-700">
-                {tecnicosFiltered.length}
-              </span>{" "}
-              técnico{tecnicosFiltered.length !== 1 ? "s" : ""}
-            </p>
-          </div>
-        )}
-      </div>
-    </div>
+      <Card className="overflow-x-auto">
+        <table className="w-full min-w-[820px] border-collapse text-[13px]">
+          <thead>
+            <tr className="bg-[#FAFAFA] text-left text-muted">
+              <th scope="col" className="border-b border-line px-4 py-2.5 font-medium">Técnico</th>
+              <th scope="col" className="border-b border-line px-4 py-2.5 font-medium">Especialidad</th>
+              <th scope="col" className="border-b border-line px-4 py-2.5 font-medium">Ciudad</th>
+              <th scope="col" className="border-b border-line px-4 py-2.5 font-medium">Calificación</th>
+              <th scope="col" className="border-b border-line px-4 py-2.5 font-medium">Estado</th>
+              <th scope="col" className="border-b border-line px-4 py-2.5 font-medium"><span className="sr-only">Acciones</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 && (
+              <tr><td colSpan={6} className="px-4 py-10 text-center text-muted">No hay técnicos con esos filtros.</td></tr>
+            )}
+            {rows.map((t) => (
+              <tr key={t.id} className="border-b border-[#F4F4F5] last:border-0">
+                <td className="px-4 py-2.5">
+                  <a href={techPath(t)} target="_blank" rel="noreferrer" className="flex items-center gap-2.5 font-medium hover:text-brand-ink">
+                    <Avatar name={t.nombre} src={t.fotoURL} size={28} />
+                    {t.nombre || "Sin nombre"}
+                  </a>
+                </td>
+                <td className="px-4 py-2.5">{(t.especialidades || [])[0] || "—"}{(t.especialidades || []).length > 1 && <span className="text-subtle"> +{t.especialidades.length - 1}</span>}</td>
+                <td className="px-4 py-2.5">{t.ciudad || "—"}</td>
+                <td className="px-4 py-2.5"><Rating value={t.ratingPromedio} count={t["reseñasCount"]} /></td>
+                <td className="px-4 py-2.5"><Badge tone={ESTADO[t.estado].tone}>{ESTADO[t.estado].label}</Badge></td>
+                <td className="px-4 py-2">
+                  <div className="flex justify-end gap-1.5">
+                    <Button size="sm" variant="secondary" onClick={() => togglePublish(t)} disabled={t.estado === "bloqueado" || busyId === t.id}>
+                      {t.estado === "publicado" ? "Ocultar" : "Publicar"}
+                    </Button>
+                    <Button size="sm" variant={t.estado === "bloqueado" ? "secondary" : "danger"} onClick={() => toggleBlock(t)} disabled={busyId === t.id}>
+                      {t.estado === "bloqueado" ? "Desbloquear" : "Bloquear"}
+                    </Button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+      <p className="mt-2 text-xs text-subtle">{rows.length} de {data.length} técnicos</p>
+    </>
   );
 }
 
-/* =========================================================
- * USUARIOS
- * =======================================================*/
-function UsuariosTable() {
-  const [usuarios, setUsuarios] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [filters, setFilters] = useState({ qText: "" });
+/* ---------------- Usuarios ---------------- */
+function UsuariosTable({ data, reload, onNotice, onError }) {
+  const [q, setQ] = useState("");
+  const [role, setRole] = useState("");
+  const [busyId, setBusyId] = useState(null);
 
-  useEffect(() => {
-    loadUsuarios();
-  }, []);
+  const rows = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    return data.filter((u) => {
+      if (role && u.role !== role) return false;
+      if (!term) return true;
+      return u.nombre?.toLowerCase().includes(term) || u.email?.toLowerCase().includes(term);
+    });
+  }, [data, q, role]);
 
-  async function loadUsuarios() {
-    setLoading(true);
+  async function toggleBlock(u) {
+    const bloquear = !u.bloqueado;
+    if (!window.confirm(bloquear ? `¿Bloquear a ${u.nombre || u.email}?` : `¿Desbloquear a ${u.nombre || u.email}?`)) return;
+    setBusyId(u.id);
     try {
-      const snapshot = await getDocs(collection(db, "users"));
-
-      let items = snapshot.docs.map((d) => {
-        const raw = d.data();
-        return {
-          id: d.id,
-          nombre: raw.nombre ?? raw.name ?? "",
-          email: raw.email ?? "",
-          telefono: raw.telefono ?? "",
-          role: raw.role ?? "cliente",
-          bloqueado: raw.blocked === true || raw.bloqueado === true,
-          createdAt: raw.createdAt ?? null,
-        };
-      });
-
-      // Orden por fecha si existe
-      items.sort((a, b) => {
-        const ta = a.createdAt?.toMillis?.() ? a.createdAt.toMillis() : 0;
-        const tb = b.createdAt?.toMillis?.() ? b.createdAt.toMillis() : 0;
-        return tb - ta;
-      });
-
-      setUsuarios(items);
-    } catch (error) {
-      console.error("Error loading usuarios:", error);
-      setUsuarios([]);
-    }
-    setLoading(false);
-  }
-
-  function aplicarFiltrosUsuarios(allUsuarios) {
-    if (!filters.qText) {
-      return allUsuarios;
-    }
-
-    const q_text = filters.qText.toLowerCase();
-    return allUsuarios.filter(
-      (u) =>
-        u.nombre?.toLowerCase().includes(q_text) ||
-        u.email?.toLowerCase().includes(q_text)
-    );
-  }
-
-  async function handleBlock(usuario) {
-    const bloquear = !usuario.bloqueado;
-    if (!window.confirm(bloquear ? "¿Bloquear este usuario?" : "¿Desbloquear este usuario?")) return;
-    try {
-      await updateDoc(doc(db, "users", usuario.id), {
-        blocked: bloquear,
-        updatedAt: serverTimestamp(),
-      });
-      loadUsuarios();
-    } catch (error) {
-      console.error("Error bloqueando usuario:", error);
+      await updateDoc(doc(db, "users", u.id), { blocked: bloquear, updatedAt: serverTimestamp() });
+      await reload();
+      onNotice(bloquear ? "Usuario bloqueado." : "Usuario desbloqueado.");
+    } catch (e) {
+      console.error(e);
+      onError("No se pudo actualizar el usuario.");
+    } finally {
+      setBusyId(null);
     }
   }
-
-
-  const usuariosFiltered = aplicarFiltrosUsuarios(usuarios);
 
   return (
-    <div className="space-y-6">
-      {/* Filtros */}
-      <div className="bg-white rounded-3xl border border-gray-200 shadow-sm p-6">
-        <h3
-          className="text-lg font-bold mb-4 flex items-center gap-2"
-          style={{ fontFamily: "Space Grotesk, sans-serif" }}
-        >
-          <Filter className="w-5 h-5 text-emerald-600" />
-          Filtros
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label
-              className="block text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide"
-              style={{ fontFamily: "DM Sans, sans-serif" }}
-            >
-              Buscar
-            </label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
-                <Search className="w-4 h-4" />
-              </span>
-              <input
-                type="text"
-                placeholder="Nombre o email..."
-                value={filters.qText}
-                onChange={(e) => {
-                  setFilters({ ...filters, qText: e.target.value });
-                }}
-                className="w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
-              />
-            </div>
-          </div>
-          <div></div>
-          <div className="flex items-end">
-            <button
-              onClick={() => {
-                setFilters({ qText: "" });
-              }}
-              className="w-full px-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-xl font-semibold transition"
-            >
-              Limpiar
-            </button>
-          </div>
-        </div>
+    <>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <SearchBox value={q} onChange={setQ} placeholder="Nombre o correo" />
+        <label className="flex items-center gap-2 text-[13px] text-muted">
+          Rol
+          <Select value={role} onChange={(e) => setRole(e.target.value)} className="h-10 w-auto">
+            <option value="">Todos</option>
+            <option value="cliente">Cliente</option>
+            <option value="tecnico">Técnico</option>
+            <option value="admin">Admin</option>
+          </Select>
+        </label>
       </div>
-
-      {/* Tabla de Usuarios */}
-      <div className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
-        {loading ? (
-          <div className="p-12 text-center">
-            <div className="inline-block animate-spin">
-              <div className="w-8 h-8 border-4 border-gray-300 border-t-emerald-600 rounded-full"></div>
-            </div>
-            <p className="mt-4 text-gray-600">Cargando usuarios...</p>
-          </div>
-        ) : usuariosFiltered.length === 0 ? (
-          <div className="p-12 text-center">
-            <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600 font-semibold">
-              No hay usuarios para mostrar
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="bg-gradient-to-r from-emerald-50 to-teal-50 border-b-2 border-gray-200">
-                  <th
-                    className="px-6 py-4 text-left font-bold text-gray-700"
-                    style={{ fontFamily: "Space Grotesk, sans-serif" }}
-                  >
-                    Usuario
-                  </th>
-                  <th
-                    className="px-6 py-4 text-left font-bold text-gray-700"
-                    style={{ fontFamily: "Space Grotesk, sans-serif" }}
-                  >
-                    Email
-                  </th>
-                  <th
-                    className="px-6 py-4 text-left font-bold text-gray-700"
-                    style={{ fontFamily: "Space Grotesk, sans-serif" }}
-                  >
-                    Teléfono
-                  </th>
-                  <th
-                    className="px-6 py-4 text-left font-bold text-gray-700"
-                    style={{ fontFamily: "Space Grotesk, sans-serif" }}
-                  >
-                    Rol
-                  </th>
-                  <th
-                    className="px-6 py-4 text-center font-bold text-gray-700"
-                    style={{ fontFamily: "Space Grotesk, sans-serif" }}
-                  >
-                    Acciones
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {usuariosFiltered.map((usuario) => (
-                  <tr
-                    key={usuario.id}
-                    className="hover:bg-gray-50 transition"
-                  >
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-gradient-to-br from-blue-400 to-cyan-500 rounded-full flex items-center justify-center text-white font-bold text-sm">
-                          {getInitials(usuario.nombre)}
-                        </div>
-                        <div>
-                          <p className="font-semibold text-gray-900">
-                            {usuario.nombre}
-                          </p>
-                          <p className="text-sm text-gray-500">
-                            {usuario.bloqueado ? "🚫 Bloqueado" : "✓ Activo"}
-                          </p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-gray-700">
-                      {usuario.email}
-                    </td>
-                    <td className="px-6 py-4 text-gray-700">
-                      {usuario.telefono || "—"}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm font-semibold capitalize">
-                        {usuario.role}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex justify-center">
-                        <button
-                          onClick={() => handleBlock(usuario)}
-                          className="px-4 py-2 rounded-lg font-semibold flex items-center gap-2 text-sm bg-red-100 text-red-700 hover:bg-red-200 transition"
-                        >
-                          <AlertCircle className="w-4 h-4" />
-                          {usuario.bloqueado ? "Desbloquear" : "Bloquear"}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {/* Contador de resultados */}
-        {!loading && usuariosFiltered.length > 0 && (
-          <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 text-center">
-            <p className="text-sm text-gray-600 font-semibold">
-              Total:{" "}
-              <span className="text-emerald-700">
-                {usuariosFiltered.length}
-              </span>{" "}
-              usuario{usuariosFiltered.length !== 1 ? "s" : ""}
-            </p>
-          </div>
-        )}
-      </div>
-    </div>
+      <Card className="overflow-x-auto">
+        <table className="w-full min-w-[760px] border-collapse text-[13px]">
+          <thead>
+            <tr className="bg-[#FAFAFA] text-left text-muted">
+              <th scope="col" className="border-b border-line px-4 py-2.5 font-medium">Usuario</th>
+              <th scope="col" className="border-b border-line px-4 py-2.5 font-medium">Correo</th>
+              <th scope="col" className="border-b border-line px-4 py-2.5 font-medium">Teléfono</th>
+              <th scope="col" className="border-b border-line px-4 py-2.5 font-medium">Rol</th>
+              <th scope="col" className="border-b border-line px-4 py-2.5 font-medium">Estado</th>
+              <th scope="col" className="border-b border-line px-4 py-2.5 font-medium"><span className="sr-only">Acciones</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 && (
+              <tr><td colSpan={6} className="px-4 py-10 text-center text-muted">No hay usuarios con esos filtros.</td></tr>
+            )}
+            {rows.map((u) => (
+              <tr key={u.id} className="border-b border-[#F4F4F5] last:border-0">
+                <td className="px-4 py-2.5">
+                  <span className="flex items-center gap-2.5 font-medium">
+                    <Avatar name={u.nombre || u.email} size={28} />
+                    {u.nombre || "Sin nombre"}
+                  </span>
+                </td>
+                <td className="px-4 py-2.5">{u.email || "—"}</td>
+                <td className="px-4 py-2.5">{u.telefono || "—"}</td>
+                <td className="px-4 py-2.5"><Badge tone="brand">{ROLE_LABEL[u.role] || u.role}</Badge></td>
+                <td className="px-4 py-2.5">{u.bloqueado ? <Badge tone="danger">Bloqueado</Badge> : <Badge tone="success">Activo</Badge>}</td>
+                <td className="px-4 py-2 text-right">
+                  {u.role !== "admin" && (
+                    <Button size="sm" variant={u.bloqueado ? "secondary" : "danger"} onClick={() => toggleBlock(u)} disabled={busyId === u.id}>
+                      {u.bloqueado ? "Desbloquear" : "Bloquear"}
+                    </Button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+      <p className="mt-2 text-xs text-subtle">{rows.length} de {data.length} usuarios</p>
+    </>
   );
 }

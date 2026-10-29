@@ -107,13 +107,11 @@ export default function Info({ page: pageKey }) {
   if (!page) return <Navigate to="/404" replace />;
 
   return (
-    <main className="max-w-3xl mx-auto px-4 py-12">
-      <h1 className="text-3xl md:text-4xl font-black text-gray-900 mb-6" style={{ fontFamily: "Space Grotesk, sans-serif" }}>
-        {page.title}
-      </h1>
-      <div className="space-y-4 text-gray-700 leading-relaxed [&_a]:text-emerald-700 [&_a]:font-semibold [&_a]:underline [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:space-y-1">
+    <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6">
+      <h1 className="text-3xl font-semibold sm:text-4xl">{page.title}</h1>
+      <div className="mt-6 space-y-4 leading-relaxed text-muted [&_a]:font-medium [&_a]:text-brand-ink [&_a]:underline [&_li]:text-muted [&_ul]:list-disc [&_ul]:space-y-1 [&_ul]:pl-6">
         {page.body}
       </div>
-    </main>
+    </div>
   );
 }
